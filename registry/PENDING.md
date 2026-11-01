@@ -94,3 +94,18 @@ git push -u origin add-studio-heightforge   # 网页开 PR，正文用 registry/
 Registry CI 会真的下载资产、比对字节与两个 sha256，并且每个 module ID 永久绑定一个已审核仓库。
 仓库不存在时 PR 会卡在「资产不可达」，属于无效提交；伪造地址或摘要则是明确禁止的行为，
 所以停在「生成好、等地址」。
+
+## 当前状态（2026-11-02）
+
+PR 已提交：<https://github.com/lumina-layer-studio/Lumina-Workshop-Registry/pull/5>
+
+| 环节 | 结果 |
+| --- | --- |
+| 模块仓库 | `https://github.com/xueseyinlang-cmyk/LUMINA-`（public，main = `12bb190`） |
+| Release | `v1.2.0`（非 draft、非 prerelease），资产 `studio.heightforge.heightmap-1.2.0.lumina-workshop` |
+| 资产复核 | 194,969 字节，sha256 `a516432f…`，与本地包一致 |
+| Fork 分支 | `xueseyinlang-cmyk:Lumina-Workshop-Registry` → `add-studio-heightforge` |
+| PR 内容 | 1 提交、1 文件、+36 行（仅 `modules/studio.heightforge.heightmap.json`） |
+| CI | 工作流 `Pull Request Validation` 结论 `action_required`（首次贡献者需维护者批准运行） |
+
+阻塞项已全部解除；后续只需等待维护者批准工作流并 review。
