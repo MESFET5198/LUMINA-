@@ -57,7 +57,7 @@ legend{font-size:11px; color:var(--muted); padding:0 4px}
 .row{display:flex; align-items:center; gap:8px; margin:6px 0; flex-wrap:wrap}
 aside input[type="number"]{width:64px; min-width:0}
 
-#strip{display:block; width:100%; height:96px; margin:6px 0 4px; cursor:pointer;
+#strip{display:block; width:100%; height:96px; min-height:96px; margin:6px 0 4px; cursor:pointer;
   border:1px solid var(--line); border-radius:6px; background:#101114; touch-action:none}
 #hist{display:block}
 .row[hidden]{display:none} /* 类选择器的 display:flex 会盖掉 hidden 属性，这里补回来 */
@@ -743,7 +743,7 @@ body[data-view="src"] #stage,body[data-view="dst"] #stage{grid-template-columns:
 (function () {
   const E = window.HeightForgeEngine;
   const MODULE_ID = "studio.heightforge.heightmap";
-  const MODULE_VERSION = "1.1.1";
+  const MODULE_VERSION = "1.1.2";
   const API_VERSION = "1.0.0";
 
   const $ = (id) => document.getElementById(id);
@@ -1144,6 +1144,7 @@ body[data-view="src"] #stage,body[data-view="dst"] #stage{grid-template-columns:
       state.layers = evenLayers(Math.max(2, Math.min(8, +ui.numLayerCount.value || 3)));
       buildLayerRows();
     }
+    drawStrip();
     schedule();
   });
   ui.numLayerCount.addEventListener("change", () => {

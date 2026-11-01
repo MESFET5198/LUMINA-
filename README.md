@@ -42,5 +42,5 @@ python tests/test_registry_record.py
 
 ## 版本 / Version
 
-1.1.1 — 对齐 HeightForge 1.3.0 的映射与导出能力；Workshop API `1.0.0` / Manifest `1`。
+1.1.2 — 对齐 HeightForge 1.3.0 的映射与导出能力；Workshop API `1.0.0` / Manifest `1`。
 1.0.0 — 首个可安装版本（8 种来源、5 个预设、16 位 PNG 导出）。

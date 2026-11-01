@@ -8,14 +8,14 @@
 | --- | --- | --- | --- |
 | 1 | 公开 GitHub 仓库存在 | ❌ 不满足 | 本目录已 `git init`（commit `4dc2438`、tag `v1.0.0`），但记录里的 `https://github.com/OWNER/heightforge-workshop` 经 API 查询返回 `HTTP 404` |
 | 2 | Release 非 draft 且非 prerelease | ❌ 不满足 | 仓库不存在 → 无 Release 可查 |
-| 3 | 资产地址可下载且字节与 `dist/` 一致 | ❌ 不满足 | 资产地址 `…/releases/download/v1.0.0/studio.heightforge.heightmap-1.1.1.lumina-workshop` 返回 404 |
+| 3 | 资产地址可下载且字节与 `dist/` 一致 | ❌ 不满足 | 资产地址 `…/releases/download/v1.0.0/studio.heightforge.heightmap-1.1.2.lumina-workshop` 返回 404 |
 
 本地实测（这三项是**已确认**的，可直接作为 CI 的比对基准）：
 
 ```text
-文件     : studio.heightforge.heightmap-1.1.1.lumina-workshop
-字节数   : 191580
-sha256   : a72df5414aff3eaad06806777338d8655950f941cb0fa915db1b124c974a1163
+文件     : studio.heightforge.heightmap-1.1.2.lumina-workshop
+字节数   : 191599
+sha256   : 1394137285b84c9ee202cddb315838066bdc3b6ae35d73b48ece1648e5ae6762
 manifest : 4b305567d0593b31586436cd103e38f78c6918cec80ec887c1db849127e86f88
 ```
 
@@ -23,7 +23,7 @@ manifest : 4b305567d0593b31586436cd103e38f78c6918cec80ec887c1db849127e86f88
 
 - 仓库已初始化：`main` 分支、单个提交 `4dc2438`、注释标签 `v1.0.0`；`dist/`、`.tmp/` 已忽略。
 - `.gitattributes` 固定 `* -text`：本机 `core.autocrlf=true`，不锁死会让检出后的 `ui/index.html` 变成 CRLF，
-  打包字节随之变化、sha256 与 Release 对不上。加锁后重新打包字节不变（当时基线 `17e92c08…`，属 1.0.0 时代；当前 1.1.1 见上表）。
+  打包字节随之变化、sha256 与 Release 对不上。加锁后重新打包字节不变（当时基线 `17e92c08…`，属 1.0.0 时代；当前 1.1.2 见上表）。
 - `tools/make_registry_patch.py` 已能从记录生成可 `git apply` 的补丁；在临时仓库里
   `git apply --check` 通过，应用后字节与 `registry/modules/…json` 完全一致。
 - `registry/PR_BODY.md` 已按 Registry 的 `.github/pull_request_template.md` 六项写好（中英双段）。
@@ -42,7 +42,7 @@ manifest : 4b305567d0593b31586436cd103e38f78c6918cec80ec887c1db849127e86f88
    ```
 
 2. **发一个不可变 Release**：tag 选 `v1.0.0`，标题任意，**只挂一个资产**
-   `dist/studio.heightforge.heightmap-1.1.1.lumina-workshop`，且不要勾 prerelease。
+   `dist/studio.heightforge.heightmap-1.1.2.lumina-workshop`，且不要勾 prerelease。
 
 3. **把地址告诉机器人**（或本地自己跑）：
 
