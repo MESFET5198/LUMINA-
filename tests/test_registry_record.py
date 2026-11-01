@@ -70,9 +70,12 @@ def main() -> int:
     ok &= expect_fail("workshopApi 上限不大于下限", lambda r: v(r)["workshopApi"].__setitem__("maxExclusive", "1.0.0"))
     ok &= expect_fail("版本倒序", lambda r: r["versions"].append({**copy.deepcopy(v(r)), "version": "0.9.0",
                                                                   "releaseTag": "v0.9.0"}))
+    # 下一个补丁版本要从记录的当前版本算出来，否则记录版本一升测试就失效
+    _maj, _min, _pat = (int(x) for x in v(BASE)["version"].split("."))
+    _next = f"{_maj}.{_min}.{_pat + 1}"
     ok &= expect_ok("第二个更高版本", lambda r: r["versions"].append({
-        **copy.deepcopy(v(r)), "version": "1.0.1", "releaseTag": "v1.0.1",
-        "assetName": "studio.heightforge.heightmap-1.0.1.lumina-workshop"}))
+        **copy.deepcopy(v(r)), "version": _next, "releaseTag": "v" + _next,
+        "assetName": f"studio.heightforge.heightmap-{_next}.lumina-workshop"}))
     ok &= expect_ok("合法的 blocked + revocation", lambda r: v(r).update({
         "state": "blocked",
         "revocation": {"reasonCode": "security.removed", "severity": "critical",

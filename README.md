@@ -1,46 +1,46 @@
-# HeightForge 高度图 / HeightForge Height Map
+# HeightForge 高度图 · Lumina 创意工坊模块
 
-把一张图片转成高度图，并交给 Lumina 继续处理。
+把一张图片转成高度图，并把结果交给 Lumina 做成浮雕 / 拼豆。
+功能对齐桌面包 **HeightForge-1.3.0-win64**（能在浏览器沙箱里实现的部分）。
 
-Turn an image into a height map and hand it to Lumina.
+## 功能 / Features
 
-## 用法 / Usage
-
-1. 点右上角「载入图片」，选一张照片或扫描图（PNG/JPEG/WebP 等常见格式）；
-   想先看效果可以点旁边的「示例」，它会现场合成一张硬币图。
-2. 在右侧调参数，左侧「高度图」会实时更新：**白 = 最高点，黑 = 最低点**。
-3. 满意后点「交给 Lumina」，高度图会作为 PNG 进入 Lumina 的浮雕/拼豆转换器。
-
-1. Choose **载入图片** (Pick image) and open a photo or scan.
-2. Adjust the panel on the right; the height map preview updates live.
-   **White = highest, black = lowest.**
-3. Press **交给 Lumina** (Hand off) to send the PNG to Lumina's converter.
-
-## 参数说明 / Controls
-
-| 参数 | 作用 |
-| --- | --- |
-| 高度来源 | 用亮度、RGB 平均、单通道、饱和度或「颜色距离」决定高度来源；颜色距离模式下，与目标色接近的像素算最高点 |
-| 输入色阶 | 决定**图片里哪些像素**算最低点/最高点：低于左端的一律压到最低，高于右端的一律拉到最高 |
-| Gamma / 对比 | 调整中间调：Gamma > 1 压暗中间调，对比用 S 曲线增强层次 |
-| 平滑 | 高斯近似模糊，压掉噪点，让浮雕更干净 |
-| 反相 | 黑 ↔ 白、最高点 ↔ 最低点 |
-| 输出量程 | 决定**最低点/最高点落到多高**：把上限拉到 50%，最亮处也只有一半高 |
-| 预设 | 默认 / 硬币徽章 / 地形 / 细节增强 / 柔和平滑 / 全部重置 |
+- **10 种高度来源**：亮度（Rec.709 感知 / 线性光）、RGB 平均、最大通道、红/绿/蓝通道、
+  透明度、饱和度、颜色距离（在图上点一下即可取色，选区算最高点）。
+- **高低映射**：输入色阶（两条可拖的竖线 + 直方图 + 自动色阶 0.5%/99.5% 分位裁剪）、
+  Gamma、S 曲线对比、高斯模糊、反相；越白越高、越黑越低。
+- **输出量程**：输出下限/上限，把最低点与最高点钉在 0–100% 的任意高度；另提供物理高度
+  （mm/cm/in），只影响交接的毫米尺寸与 OBJ，不改灰度值。
+- **台阶化（区域分层）**：2–8 层亮度区间，每层单独设高度与边界羽化；亮度层按覆盖权重
+  归一化平均。开启后 Gamma / 对比不参与，色阶仍决定区间位置。
+- **预览**：并排 / 只看原图 / 只看高度图；灰度高度图、山体着色、法线图（可调强度与
+  绿通道翻转）。
+- **导出**：16 位灰度 PNG、8 位灰度 PNG、法线图 PNG、OBJ 网格、参数 JSON（可附带）。
+- **载入**：宿主原生选图、拖放文件、粘贴图片；无宿主时退化为本地选文件（独立模式）。
 
 ## 输出 / Output
 
-- 「交给 Lumina」：标准 8 位 PNG，随宿主交接（`handoff.image`）。
-- 「下载 16 位 PNG」：浏览器内导出 16 位灰度 PNG（0–65535），适合在外部工具里当高度图用。
+- 「交给 Lumina」：标准 8 位 PNG，随宿主交接（`handoff.image`），并按物理高度给出
+  `recommendedWidthMm` / `recommendedHeightMm`。
+- 「导出」：浏览器内直接写 PNG（自研编码器，无外部依赖）或 OBJ / JSON。
 
 ## 隐私 / Privacy
 
 模块只在本地处理像素：不上传图片、不访问网络、不写入任何凭据。申请的权限只有
-`image.pick`（用户选图）与 `handoff.image`（把结果交给 Lumina），v1 也没有通用网络权限。
+`image.pick`（用户选图）与 `handoff.image`（把结果交给 Lumina），没有通用网络权限。
 
 Everything runs locally in the sandboxed module frame. The module requests only
 `image.pick` and `handoff.image`.
 
+## 构建 / Build
+
+```bash
+python tools/build_package.py      # 产出 dist/*.lumina-workshop 并做静态检查
+python tools/run_js_tests.py       # 引擎单测（无头浏览器）
+python tests/test_registry_record.py
+```
+
 ## 版本 / Version
 
-1.0.0 — 对应宿主 Workshop API `1.0.0` / Manifest `1`。
+1.1.0 — 对齐 HeightForge 1.3.0 的映射与导出能力；Workshop API `1.0.0` / Manifest `1`。
+1.0.0 — 首个可安装版本（8 种来源、5 个预设、16 位 PNG 导出）。

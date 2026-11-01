@@ -152,6 +152,149 @@ function near(a, b, eps) { return Math.abs(a - b) <= (eps === undefined ? 1e-4 :
   const s = E.stats(new Float32Array([0, 0.5, 1]));
   ok("统计 min/max/mean", near(s.min, 0) && near(s.max, 1) && near(s.mean, 0.5));
 }
+
+// === 与桌面版对齐的新增能力 ===============================================
+function rgbaOf(r, g, b, a) {
+  const n = r.length;
+  const out = new Uint8ClampedArray(n * 4);
+  for (let i = 0; i < n; i++) {
+    out[i * 4] = r[i]; out[i * 4 + 1] = g[i]; out[i * 4 + 2] = b[i]; out[i * 4 + 3] = a ? a[i] : 255;
+  }
+  return out;
+}
+
+// --- 新来源：luma_linear / alpha / color_distance 别名 ---------------------
+{
+  const px = rgbaOf([26, 26], [26, 26], [26, 26]);
+  const lin = E.extractSource(px, "luma_linear");
+  const luma = E.extractSource(px, "luma");
+  ok("来源 luma_linear：暗部被压低", lin[0] < luma[0], `${lin[0].toFixed(4)} < ${luma[0].toFixed(4)}`);
+  const same = E.extractSource(px, "luma_linear");
+  ok("来源 luma_linear：整幅一致", near(lin[0], same[0]) && near(lin[1], same[1]));
+}
+{
+  const px = rgbaOf([200, 200], [100, 100], [50, 50], [255, 0]);
+  const a = E.extractSource(px, "alpha");
+  ok("来源 alpha：透明 = 0、不透明 = 1", near(a[0], 1) && near(a[1], 0), `[${a[0]},${a[1]}]`);
+}
+{
+  const px = rgbaOf([255, 0], [0, 128], [0, 255]);
+  const d = E.extractSource(px, "color_distance", [1, 0, 0], 0.5);
+  const c = E.extractSource(px, "color", [1, 0, 0], 0.5);
+  ok("来源 color_distance 与 color 同义", near(d[0], c[0]) && near(d[1], c[1]), `${d[0].toFixed(3)}/${c[0].toFixed(3)}`);
+  ok("来源 color_distance：命中色最高", d[0] > 0.99 && d[1] < d[0], `${d[0].toFixed(3)} vs ${d[1].toFixed(3)}`);
+}
+
+// --- 直方图 / 自动色阶 -----------------------------------------------------
+{
+  const f = new Float32Array(256);
+  for (let i = 0; i < 256; i++) f[i] = i / 255;
+  const h = E.histogram(f);
+  let sum = 0;
+  for (let i = 0; i < 256; i++) sum += h[i];
+  ok("直方图：总数等于像素数", sum === 256, sum);
+  ok("直方图：单峰位置正确", h[0] === 1 && h[255] === 1 && h[128] === 1);
+}
+{
+  // 90% 像素压在 0.2~0.4，自动色阶应把黑场抬起来
+  const n = 1000;
+  const f = new Float32Array(n);
+  for (let i = 0; i < n; i++) f[i] = i < 900 ? 0.2 + (i % 100) / 500 : 0.95;
+  const lv = E.autoLevels(f, 0.005, 0.995);
+  ok("自动色阶：黑场被抬起", lv.lo > 0.15 && lv.lo < 0.45, lv.lo.toFixed(3));
+  ok("自动色阶：白场接近最亮值", lv.hi > 0.85, lv.hi.toFixed(3));
+  ok("自动色阶：区间非退化", lv.hi - lv.lo > 0.002);
+}
+
+// --- 区域分层（台阶化） ----------------------------------------------------
+{
+  const f = new Float32Array([0.1, 0.4, 0.9]);
+  const layers = [
+    { lo: 0, hi: 0.33, height: 0.15, feather: 0 },
+    { lo: 0.33, hi: 0.66, height: 0.5, feather: 0 },
+    { lo: 0.66, hi: 1, height: 0.85, feather: 0 },
+  ];
+  const out = E.applyLayers(f, layers, 0);
+  ok("分层：三档各就各位", near(out[0], 0.15) && near(out[1], 0.5) && near(out[2], 0.85), `[${out[0]},${out[1]},${out[2]}]`);
+}
+{
+  const f = new Float32Array([0.5]);
+  const same = E.applyLayers(f, [], 0.3);
+  ok("分层：空层表不改动", near(same[0], 0.5), same[0]);
+}
+{
+  const f = new Float32Array([0.5, 0.9]);
+  const layers = [
+    { lo: 0, hi: 0.6, height: 0.2, feather: 0 },
+    { lo: 0.4, hi: 1, height: 0.8, feather: 0 },
+  ];
+  const out = E.applyLayers(f, layers, 0);
+  ok("分层：重叠区按权重平均", near(out[0], 0.5, 1e-3), out[0].toFixed(3));
+  ok("分层：只命中一层时取该层高度", near(out[1], 0.8, 1e-3), out[1].toFixed(3));
+}
+{
+  const f = new Float32Array([0.5]);
+  const hard = E.applyLayers(f, [{ lo: 0, hi: 1, height: 0.2, feather: 0 }, { lo: 0, hi: 0.45, height: 0.9, feather: 0 }], 0);
+  const soft = E.applyLayers(f, [{ lo: 0, hi: 1, height: 0.2, feather: 0.1 }, { lo: 0.4, hi: 1, height: 0.9, feather: 0.1 }], 0);
+  ok("分层：羽化让边界出现中间值", soft[0] > 0.2 && soft[0] < 0.9, `${hard[0].toFixed(3)} → ${soft[0].toFixed(3)}`);
+}
+
+// --- 预览：法线图 / 山体着色 ----------------------------------------------
+{
+  const w = 3, h = 3;
+  const flat = new Float32Array(w * h).fill(0.5);
+  const n = E.normalRGBA(flat, w, h, 1, false);
+  ok("法线：平面 = (128,128,255)", Math.abs(n[4] - 128) <= 1 && Math.abs(n[5] - 128) <= 1 && n[6] === 255, `${n[4]},${n[5]},${n[6]}`);
+  const ramp = new Float32Array(w * h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) ramp[y * w + x] = x / (w - 1);
+  const nr = E.normalRGBA(ramp, w, h, 1, false);
+  const ng = E.normalRGBA(ramp, w, h, 1, true);
+  ok("法线：X 方向坡度改变红通道", nr[4] !== 128);
+  ok("法线：绿通道可翻转", Math.abs(nr[5] - 128) !== Math.abs(ng[5] - 128) || (nr[5] === 128 && ng[5] === 128));
+}
+{
+  const w = 4, h = 2;
+  const f = new Float32Array(w * h);
+  for (let i = 0; i < f.length; i++) f[i] = i / (f.length - 1);
+  const s = E.shadeRGBA(f, w, h);
+  ok("着色：输出尺寸与不透明", s.length === w * h * 4 && s[3] === 255);
+  const top = s[(w * (h - 1) + w - 1) * 4], bottom = s[0];
+  ok("着色：高差带来明暗差别", Math.abs(top - bottom) > 0, `${bottom} → ${top}`);
+}
+
+// --- 编码：8 位 / 16 位灰度、RGB ------------------------------------------
+{
+  const f = new Float32Array([0, 0.5, 1, 0.25]);
+  const png16 = E.encodePngGray(f, 2, 2, 16);
+  const png8 = E.encodePngGray(f, 2, 2, 8);
+  const ihdr = (buf) => Array.from(buf.slice(24, 29)); // 跳过签名(8)+长度(4)+类型(4)+宽(4)+高(4)
+  ok("PNG8：位深 8、灰度色型", ihdr(png8)[0] === 8 && ihdr(png8)[1] === 0, ihdr(png8).join(","));
+  ok("PNG16：位深 16、灰度色型", ihdr(png16)[0] === 16 && ihdr(png16)[1] === 0, ihdr(png16).join(","));
+  const legacy = E.encodePng16(f, 2, 2);
+  ok("PNG16：encodePngGray(16) 与 encodePng16 等长", png16.length === legacy.length, `${png16.length}/${legacy.length}`);
+}
+{
+  const rgba = new Uint8ClampedArray([255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255]);
+  const png = E.encodePngRgb(rgba, 2, 2);
+  ok("PNG RGB：色型 2、位深 8", png[24] === 8 && png[25] === 2, `${png[24]},${png[25]}`);
+  ok("PNG RGB：签名正确", png[0] === 0x89 && png[1] === 0x50 && png[2] === 0x4e && png[3] === 0x47);
+}
+
+// --- OBJ 网格 --------------------------------------------------------------
+{
+  const w = 5, h = 5;
+  const f = new Float32Array(w * h);
+  for (let i = 0; i < f.length; i++) f[i] = i / (f.length - 1);
+  const obj = E.buildObj(f, w, h, { widthMm: 100, heightMm: 100, heightScale: 10, maxSide: 5 });
+  const vs = obj.split("\n").filter((l) => l.startsWith("v "));
+  const fs = obj.split("\n").filter((l) => l.startsWith("f "));
+  ok("OBJ：顶点数 = 网格点", vs.length === 25, vs.length);
+  ok("OBJ：面数 = (n-1)^2", fs.length === 16, fs.length);
+  const first = vs[0].split(" ").slice(1).map(Number);
+  ok("OBJ：首顶点在原点、Z 为高度", near(first[0], 0) && near(first[2], 0) && near(first[1], 0), vs[0]);
+  const last = vs[vs.length - 1].split(" ").slice(1).map(Number);
+  ok("OBJ：末顶点 Z = 最高 × 缩放", near(last[1], 10), vs[vs.length - 1]);
+}
 """
 
 HARNESS = """<!doctype html>

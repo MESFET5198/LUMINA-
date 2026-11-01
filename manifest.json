@@ -1,14 +1,14 @@
 {
   "manifestVersion": 1,
   "id": "studio.heightforge.heightmap",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "name": {
     "zh-CN": "HeightForge 高度图",
     "en-US": "HeightForge Height Map"
   },
   "description": {
-    "zh-CN": "把一张图片转成高度图：可自定义高低映射与输出量程，并把结果 PNG 交给 Lumina 转换为浮雕或拼豆。",
-    "en-US": "Turn an image into a height map with custom high/low mapping, then hand the PNG to Lumina for relief conversion."
+    "zh-CN": "把图片转成高度图：10 种来源、输入色阶与自动色阶、Gamma/对比/平滑、输出量程与物理高度、台阶化分层、灰度/山体/法线三种预览，可导出 16 位 PNG、8 位 PNG、法线图与 OBJ，并交给 Lumina 转浮雕或拼豆。",
+    "en-US": "Image to height map with 10 sources, levels, auto levels, gamma, contrast, blur, output range, stepped layers, 3 previews, export PNG-16/8, normal map or OBJ, then hand off to Lumina."
   },
   "publisher": "HeightForge Studio",
   "workshopApi": {

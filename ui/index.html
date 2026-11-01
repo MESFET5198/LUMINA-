@@ -54,7 +54,9 @@ fieldset{
   padding:8px 10px 10px; background:var(--panel2);
 }
 legend{font-size:11px; color:var(--muted); padding:0 4px}
-.row{display:flex; align-items:center; gap:8px; margin:6px 0}
+.row{display:flex; align-items:center; gap:8px; margin:6px 0; flex-wrap:wrap}
+aside input[type="number"]{width:64px; min-width:0}
+#hist{display:block}
 .row[hidden]{display:none} /* 类选择器的 display:flex 会盖掉 hidden 属性，这里补回来 */
 .row label{flex:none; width:88px; color:var(--muted); font-size:12px}
 .row .val{
@@ -84,6 +86,23 @@ footer{
 }
 footer .mono{font-variant-numeric:tabular-nums}
 .hint{color:var(--muted); font-size:11px; line-height:1.45; margin:6px 0 0}
+
+/* ---- 视图切换 / 图层面板 / 提示 ---- */
+body[data-view="src"] .pane.dst{display:none}
+body[data-view="dst"] .pane.src{display:none}
+body[data-view="src"] #stage,body[data-view="dst"] #stage{grid-template-columns:1fr}
+.viewsw{display:flex; gap:2px; background:#17181b; border:1px solid var(--line); border-radius:7px; padding:2px}
+.viewsw button{padding:3px 9px; border:0; background:transparent; color:var(--muted); border-radius:5px}
+.viewsw button[aria-pressed="true"]{background:#2f3a4a; color:#cfe4ff}
+#hist{width:100%; height:64px; display:block; border:1px solid var(--line); border-radius:6px; background:#101114; cursor:ew-resize}
+.lrow{display:grid; grid-template-columns:64px 1fr 52px 52px; gap:4px; align-items:center; margin:4px 0}
+.lrow.sel{outline:1px solid #4a6b8f; border-radius:6px; padding:2px}
+.lrow select,.lrow input{font-size:11px; padding:2px 3px}
+.lrow .mini{padding:1px 4px; font-size:11px}
+#toast{position:fixed; left:50%; bottom:52px; transform:translateX(-50%); background:#3a2a2a;
+  color:#ffd9d9; border:1px solid #6b3a3a; padding:6px 12px; border-radius:8px; font-size:12px;
+  opacity:0; pointer-events:none; transition:opacity .18s}
+#toast.on{opacity:1}
 </style>
 </head>
 <body>
@@ -92,6 +111,11 @@ footer .mono{font-variant-numeric:tabular-nums}
   <h1>HeightForge 高度图</h1>
   <span class="badge" id="hostBadge">独立模式</span>
   <span class="spacer"></span>
+  <div class="viewsw" role="group" aria-label="预览视图">
+    <button id="btnViewSplit" aria-pressed="true">并排</button>
+    <button id="btnViewSrc" aria-pressed="false">原图</button>
+    <button id="btnViewDst" aria-pressed="false">高度图</button>
+  </div>
   <button id="btnPick">载入图片</button>
   <button id="btnDemo">示例</button>
   <button id="btnHandoff" class="primary" disabled>交给 Lumina</button>
@@ -113,18 +137,25 @@ footer .mono{font-variant-numeric:tabular-nums}
 
   <aside>
     <fieldset>
-      <legend>① 高度来源（像素的哪一部分算高）</legend>
+      <legend>① 图像</legend>
+      <div class="hint" id="imgInfo">尚未载入图片</div>
+    </fieldset>
+
+    <fieldset>
+      <legend>② 高度来源（像素的哪一部分算高）</legend>
       <div class="row">
         <label>来源</label>
         <select id="selSource">
-          <option value="luma">亮度（Rec.709）</option>
+          <option value="luma">亮度（Rec.709 感知）</option>
+          <option value="luma_linear">亮度（线性光）</option>
           <option value="average">RGB 平均</option>
           <option value="max">最大通道</option>
           <option value="red">红通道</option>
           <option value="green">绿通道</option>
           <option value="blue">蓝通道</option>
+          <option value="alpha">透明度</option>
           <option value="saturation">饱和度</option>
-          <option value="color">颜色距离（选区 = 最高点）</option>
+          <option value="color_distance">颜色距离（选区 = 最高点）</option>
         </select>
       </div>
       <div class="row" id="rowColor" hidden>
@@ -134,81 +165,107 @@ footer .mono{font-variant-numeric:tabular-nums}
         <input type="range" id="rngTol" min="0.02" max="1" step="0.01" value="0.25">
         <span class="val" id="valTol">0.25</span>
       </div>
+      <p class="hint" id="hintPick">颜色距离模式下，点原图任意位置即可取色；选区=最高点，其余=最低点。</p>
     </fieldset>
 
     <fieldset>
-      <legend>② 输入色阶（哪些像素 = 最低 / 最高）</legend>
+      <legend>③ 高低映射 · 输入（哪些像素 = 最低/最高）</legend>
+      <canvas id="hist" width="480" height="128" title="左竖线=最低点（黑），右竖线=最高点（白）；拖动竖线可改"></canvas>
       <div class="row">
-        <label>最低点（黑）</label>
-        <input type="range" id="rngInLo" min="0" max="1" step="0.005" value="0">
-        <span class="val" id="valInLo">0%</span>
+        <label>最低点</label>
+        <input type="number" id="numInLo" min="0" max="100" step="0.5" value="0" style="width:64px"> %
+        <label style="width:auto">最高点</label>
+        <input type="number" id="numInHi" min="0" max="100" step="0.5" value="100" style="width:64px"> %
+        <button id="btnAuto" class="mini">自动色阶</button>
       </div>
-      <div class="row">
-        <label>最高点（白）</label>
-        <input type="range" id="rngInHi" min="0" max="1" step="0.005" value="1">
-        <span class="val" id="valInHi">100%</span>
-      </div>
-      <p class="hint">左端以下的像素全部压成最低点，右端以上的全部拉到最高点；越白越高，越黑越低。</p>
+      <p class="hint">左竖线 = 最低点（黑）：亮度低于它的像素全部算最低；右竖线 = 最高点（白）：高于它的全部算最高。越白越高，越黑越低。</p>
     </fieldset>
 
     <fieldset>
-      <legend>③ 中间调与细节</legend>
-      <div class="row">
-        <label>Gamma</label>
+      <legend>④ 中间调与细节</legend>
+      <div class="row"><label>Gamma</label>
         <input type="range" id="rngGamma" min="0.2" max="3" step="0.01" value="1">
-        <span class="val" id="valGamma">1.00</span>
-      </div>
-      <div class="row">
-        <label>对比（S 曲线）</label>
-        <input type="range" id="rngContrast" min="0.4" max="2.5" step="0.01" value="1.2">
-        <span class="val" id="valContrast">1.20</span>
-      </div>
-      <div class="row">
-        <label>平滑（模糊）</label>
-        <input type="range" id="rngBlur" min="0" max="12" step="0.5" value="0.6">
-        <span class="val" id="valBlur">0.6</span>
-      </div>
-      <div class="row">
-        <label>反相</label>
-        <input type="checkbox" id="chkInvert">
-        <span class="hint" style="margin:0">黑 ↔ 白，最高点 ↔ 最低点</span>
-      </div>
+        <span class="val" id="valGamma">1.00</span></div>
+      <div class="row"><label>对比（S 曲线）</label>
+        <input type="range" id="rngContrast" min="0.2" max="3" step="0.01" value="1.2">
+        <span class="val" id="valContrast">1.20</span></div>
+      <div class="row"><label>平滑（模糊）</label>
+        <input type="range" id="rngBlur" min="0" max="8" step="0.1" value="0.5">
+        <span class="val" id="valBlur">0.5</span></div>
+      <div class="row"><label style="width:auto">反相（黑→白）</label>
+        <input type="checkbox" id="chkInvert"></div>
     </fieldset>
 
     <fieldset>
-      <legend>④ 输出量程（最低点 / 最高点落到的高度）</legend>
-      <div class="row">
-        <label>输出下限</label>
-        <input type="range" id="rngOutLo" min="0" max="1" step="0.005" value="0">
-        <span class="val" id="valOutLo">0%</span>
+      <legend>⑤ 输出量程（最低点/最高点落到的高度）</legend>
+      <div class="row"><label>输出下限</label>
+        <input type="range" id="rngOutLo" min="0" max="1" step="0.01" value="0">
+        <span class="val" id="valOutLo">0%</span></div>
+      <div class="row"><label>输出上限</label>
+        <input type="range" id="rngOutHi" min="0" max="1" step="0.01" value="1">
+        <span class="val" id="valOutHi">100%</span></div>
+      <div class="row"><label style="width:auto">物理高度上限</label>
+        <input type="number" id="numPhys" min="0.1" max="1000" step="0.1" value="10" style="width:70px">
+        <select id="selUnit" style="width:64px">
+          <option value="mm">mm</option><option value="cm">cm</option><option value="in">in</option>
+        </select>
       </div>
-      <div class="row">
-        <label>输出上限</label>
-        <input type="range" id="rngOutHi" min="0" max="1" step="0.005" value="1">
-        <span class="val" id="valOutHi">100%</span>
-      </div>
+      <p class="hint">物理高度只影响「交给 Lumina」的毫米尺寸与 OBJ，不改灰度值。</p>
     </fieldset>
 
     <fieldset>
-      <legend>⑤ 预设</legend>
+      <legend>⑥ 预览样式</legend>
+      <div class="row"><label>样式</label>
+        <select id="selPreview">
+          <option value="gray">灰度高度图</option>
+          <option value="shaded">山体着色</option>
+          <option value="normal">法线图</option>
+        </select>
+        <input type="range" id="rngNorm" min="0.2" max="4" step="0.1" value="1">
+        <span class="val" id="valNorm">1.0</span></div>
+      <div class="row"><label style="width:auto">法线绿通道翻转</label>
+        <input type="checkbox" id="chkFlip"></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>⑦ 台阶化（按亮度分层）</legend>
+      <div class="row"><label style="width:auto">启用台阶化</label>
+        <input type="checkbox" id="chkLayers">
+        <label style="width:auto">层数</label>
+        <input type="number" id="numLayerCount" min="2" max="8" step="1" value="3" style="width:56px">
+        <button id="btnLayerEven" class="mini">等分模板</button>
+      </div>
+      <div id="layerRows"></div>
+      <p class="hint">高度 0 = 最低点（黑），1 = 最高点（白）。亮度层按覆盖权重归一化平均——羽化越大边界越平滑。开启后 Gamma / 对比不参与，色阶仍决定区间位置。</p>
+    </fieldset>
+
+    <fieldset>
+      <legend>⑧ 预设</legend>
       <div class="presets" id="presets">
-        <button data-preset="default">默认</button>
         <button data-preset="badge">硬币徽章</button>
         <button data-preset="terrain">地形</button>
         <button data-preset="detail">细节增强</button>
         <button data-preset="smooth">柔和平滑</button>
-        <button data-preset="reset">全部重置</button>
+        <button data-preset="default">全部重置</button>
       </div>
     </fieldset>
   </aside>
 </main>
 
 <footer>
-  <span class="mono" id="statInfo">—</span>
-  <span class="spacer"></span>
-  <span class="mono" id="statRange"></span>
-  <button id="btnDownload" disabled>下载 16 位 PNG</button>
+  <span class="mono" id="statRange">未载入</span>
+  <span class="spacer" style="flex:1"></span>
+  <select id="selExport" style="width:150px">
+    <option value="png16">16 位灰度 PNG（推荐）</option>
+    <option value="png8">8 位灰度 PNG</option>
+    <option value="normal">法线图 PNG</option>
+    <option value="obj">OBJ 网格</option>
+    <option value="meta">参数 JSON</option>
+  </select>
+  <label style="width:auto; color:var(--muted)"><input type="checkbox" id="chkMeta"> 附带 JSON</label>
+  <button id="btnExport">导出</button>
 </footer>
+<div id="toast"></div>
 
 <input type="file" id="fileInput" accept="image/*" hidden>
 
@@ -239,7 +296,15 @@ footer .mono{font-variant-numeric:tabular-nums}
           v = mx <= 1e-6 ? 0 : (mx - mn) / mx;
           break;
         }
-        case "color": {
+        case "alpha": v = rgba[p + 3] / 255; break;
+        case "luma_linear": {
+          // sRGB → 线性光后再取 Rec.709 亮度（与桌面版的 luma_linear 一致）
+          const lin = (c) => (c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
+          v = 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+          break;
+        }
+        case "color":
+        case "color_distance": {
           const d = Math.sqrt(((r - tr) ** 2 + (g - tg) ** 2 + (b - tb) ** 2) / 3);
           v = clamp01(1 - d * invTol);
           break;
@@ -425,9 +490,205 @@ footer .mono{font-variant-numeric:tabular-nums}
     return png;
   }
 
+  // ---------- 与桌面版对齐的新增能力 ----------
+
+  /** 256 档直方图（统计「来源场」的分布，供自动色阶与直方图控件用）。 */
+  function histogram(field) {
+    const h = new Uint32Array(256);
+    for (let i = 0; i < field.length; i++) {
+      h[Math.max(0, Math.min(255, (field[i] * 255) | 0))]++;
+    }
+    return h;
+  }
+
+  /** 自动色阶：按分位裁剪黑场/白场（桌面版默认 0.5% / 99.5%）。 */
+  function autoLevels(field, loPct = 0.005, hiPct = 0.995) {
+    const h = histogram(field);
+    const total = field.length || 1;
+    const want = [total * loPct, total * hiPct];
+    let acc = 0, lo = 0, hi = 1, got = 0;
+    for (let b = 0; b < 256; b++) {
+      acc += h[b];
+      if (got === 0 && acc >= want[0]) { lo = b / 255; got = 1; }
+      if (acc >= want[1]) { hi = b / 255; break; }
+    }
+    if (hi - lo < 0.002) hi = Math.min(1, lo + 0.002);
+    return { lo, hi };
+  }
+
+  /**
+   * 区域分层（台阶化），与桌面版同一语义：亮度层按覆盖权重归一化平均。
+   * layers = [{lo, hi, height, feather}]，feather 为边界过渡宽度（0 即硬台阶）。
+   */
+  function applyLayers(field, layers, fallback = 0) {
+    if (!layers || !layers.length) return field;
+    const out = new Float32Array(field.length);
+    for (let i = 0; i < field.length; i++) {
+      const v = field[i];
+      let acc = 0, total = 0;
+      for (let k = 0; k < layers.length; k++) {
+        const L = layers[k];
+        const f = Math.max(0, Math.min(0.1, L.feather || 0));
+        let wgt;
+        if (f <= 1e-6) {
+          wgt = v >= L.lo && v <= L.hi ? 1 : 0;
+        } else {
+          const up = Math.min(1, Math.max(0, (v - (L.lo - f)) / (2 * f)));
+          const down = Math.min(1, Math.max(0, ((L.hi + f) - v) / (2 * f)));
+          wgt = Math.min(up, down);
+        }
+        if (wgt > 0) { acc += wgt * L.height; total += wgt; }
+      }
+      out[i] = total > 0 ? acc / total : fallback;
+    }
+    return out;
+  }
+
+  /** 法线图预览：由高度场差分求法线（与桌面版 normal_map 同向，默认 OpenGL 绿向）。 */
+  function normalRGBA(field, w, h, strength = 1, flipGreen = false) {
+    const rgba = new Uint8ClampedArray(w * h * 4);
+    const at = (x, y) => field[Math.min(h - 1, Math.max(0, y)) * w + Math.min(w - 1, Math.max(0, x))];
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const dx = (at(x + 1, y) - at(x - 1, y)) * strength * 8;
+        const dy = (at(x, y + 1) - at(x, y - 1)) * strength * 8;
+        let nx = -dx, ny = flipGreen ? dy : -dy, nz = 1;
+        const len = Math.hypot(nx, ny, nz) || 1;
+        nx /= len; ny /= len; nz /= len;
+        const p = (y * w + x) * 4;
+        rgba[p] = (nx * 0.5 + 0.5) * 255;
+        rgba[p + 1] = (ny * 0.5 + 0.5) * 255;
+        rgba[p + 2] = (nz * 0.5 + 0.5) * 255;
+        rgba[p + 3] = 255;
+      }
+    }
+    return rgba;
+  }
+
+  /** 山体着色预览：高度决定色带，坡度决定明暗（近似桌面版的「山体着色」）。 */
+  function shadeRGBA(field, w, h) {
+    const rgba = new Uint8ClampedArray(w * h * 4);
+    const ramp = [
+      [0.0, 32, 48, 74], [0.25, 58, 92, 66], [0.5, 128, 122, 84],
+      [0.75, 168, 140, 104], [1.0, 236, 232, 226],
+    ];
+    const at = (x, y) => field[Math.min(h - 1, Math.max(0, y)) * w + Math.min(w - 1, Math.max(0, x))];
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const v = field[y * w + x];
+        let c = ramp[ramp.length - 1];
+        for (let k = 1; k < ramp.length; k++) {
+          if (v <= ramp[k][0]) {
+            const a = ramp[k - 1], b = ramp[k];
+            const t = (v - a[0]) / (b[0] - a[0] || 1);
+            c = [v, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t, a[3] + (b[3] - a[3]) * t];
+            break;
+          }
+        }
+        // 西北光的朗伯项
+        const dx = at(x + 1, y) - at(x - 1, y);
+        const dy = at(x, y + 1) - at(x, y - 1);
+        const shade = Math.max(0.35, Math.min(1.45, 1 + (-dx - dy) * 6));
+        const p = (y * w + x) * 4;
+        rgba[p] = Math.min(255, c[1] * shade);
+        rgba[p + 1] = Math.min(255, c[2] * shade);
+        rgba[p + 2] = Math.min(255, c[3] * shade);
+        rgba[p + 3] = 255;
+      }
+    }
+    return rgba;
+  }
+
+  /** 8/16 位灰度 PNG（颜色类型 0）。 */
+  function encodePngGray(field, w, h, bitDepth = 16) {
+    const bytes = bitDepth === 16 ? 2 : 1;
+    const stride = 1 + w * bytes;
+    const raw = new Uint8Array(stride * h);
+    const maxv = bitDepth === 16 ? 65535 : 255;
+    for (let y = 0; y < h; y++) {
+      const row = y * stride;
+      raw[row] = 0; // filter: none
+      for (let x = 0; x < w; x++) {
+        const v = Math.round(clamp01(field[y * w + x]) * maxv);
+        if (bytes === 2) {
+          raw[row + 1 + x * 2] = (v >> 8) & 0xff;
+          raw[row + 2 + x * 2] = v & 0xff;
+        } else {
+          raw[row + 1 + x] = v;
+        }
+      }
+    }
+    return pngContainer(w, h, bitDepth, 0, raw);
+  }
+
+  /** 8 位 RGB PNG（颜色类型 2）：法线图用。 */
+  function encodePngRgb(rgba, w, h) {
+    const stride = 1 + w * 3;
+    const raw = new Uint8Array(stride * h);
+    for (let y = 0; y < h; y++) {
+      const row = y * stride;
+      raw[row] = 0;
+      for (let x = 0; x < w; x++) {
+        const p = (y * w + x) * 4;
+        raw[row + 1 + x * 3] = rgba[p];
+        raw[row + 2 + x * 3] = rgba[p + 1];
+        raw[row + 3 + x * 3] = rgba[p + 2];
+      }
+    }
+    return pngContainer(w, h, 8, 2, raw);
+  }
+
+  /** OBJ 网格：高度场抽样成方格，顶点带物理高度（与桌面版 OBJ 同一坐标系）。 */
+  function buildObj(field, w, h, opts = {}) {
+    const maxSide = opts.maxSide || 240;
+    const step = Math.max(1, Math.ceil(Math.max(w, h) / maxSide));
+    const cols = Math.floor((w - 1) / step) + 1;
+    const rows = Math.floor((h - 1) / step) + 1;
+    const cellW = (opts.widthMm || 100) / cols;
+    const cellH = (opts.heightMm || (100 * h) / w) / rows;
+    const zScale = opts.heightScale || 1;
+    const lines = ["# HeightForge height map", `# grid ${cols}x${rows} step ${step}px`];
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const x = c * step, y = r * step;
+        const v = field[Math.min(h - 1, y) * w + Math.min(w - 1, x)];
+        lines.push(`v ${(c * cellW).toFixed(4)} ${(v * zScale).toFixed(4)} ${(r * cellH).toFixed(4)}`);
+      }
+    }
+    for (let r = 0; r < rows - 1; r++) {
+      for (let c = 0; c < cols - 1; c++) {
+        const a = r * cols + c + 1, b = a + 1, d = a + cols, e = d + 1;
+        lines.push(`f ${a} ${d} ${e} ${b}`);
+      }
+    }
+    return lines.join("\n") + "\n";
+  }
+
+  function pngContainer(w, h, bitDepth, colorType, raw) {
+    const ihdr = new Uint8Array(13);
+    const dv = new DataView(ihdr.buffer);
+    dv.setUint32(0, w); dv.setUint32(4, h);
+    ihdr[8] = bitDepth;
+    ihdr[9] = colorType;
+    ihdr[10] = 0; ihdr[11] = 0; ihdr[12] = 0;
+    const parts = [
+      new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+      chunk("IHDR", ihdr),
+      chunk("IDAT", zlibStored(raw)),
+      chunk("IEND", new Uint8Array(0)),
+    ];
+    const total = parts.reduce((n, p) => n + p.length, 0);
+    const png = new Uint8Array(total);
+    let at = 0;
+    for (const p of parts) { png.set(p, at); at += p.length; }
+    return png;
+  }
+
   global.HeightForgeEngine = {
     extractSource, blurField, mapField, stats, fieldToRGBA,
     encodePng16, smoothstep, clamp01, crc32, adler32,
+    histogram, autoLevels, applyLayers, normalRGBA, shadeRGBA,
+    encodePngGray, encodePngRgb, buildObj,
   };
 })(window);
 </script>
@@ -438,7 +699,7 @@ footer .mono{font-variant-numeric:tabular-nums}
 (function () {
   const E = window.HeightForgeEngine;
   const MODULE_ID = "studio.heightforge.heightmap";
-  const MODULE_VERSION = "1.0.0";
+  const MODULE_VERSION = "1.1.0";
   const API_VERSION = "1.0.0";
 
   const $ = (id) => document.getElementById(id);
@@ -542,175 +803,430 @@ footer .mono{font-variant-numeric:tabular-nums}
   }
 
   // ---------------- 参数 UI 同步 ----------------
+  // ---------------- 面板控件（与 HTML 一一对应） ----------------
+  /** 所有面板控件的句柄；render()/readUI() 都只经由这张表访问 DOM。 */
   const ui = {
-    selSource: $("selSource"), inColor: $("inColor"), rngTol: $("rngTol"),
-    rngInLo: $("rngInLo"), rngInHi: $("rngInHi"),
-    rngGamma: $("rngGamma"), rngContrast: $("rngContrast"), rngBlur: $("rngBlur"),
-    chkInvert: $("chkInvert"),
-    rngOutLo: $("rngOutLo"), rngOutHi: $("rngOutHi"),
+    imgInfo: $("imgInfo"),
+    selSource: $("selSource"), rowColor: $("rowColor"), inColor: $("inColor"),
+    rngTol: $("rngTol"), valTol: $("valTol"), hintPick: $("hintPick"),
+    hist: $("hist"), numInLo: $("numInLo"), numInHi: $("numInHi"), btnAuto: $("btnAuto"),
+    rngGamma: $("rngGamma"), valGamma: $("valGamma"),
+    rngContrast: $("rngContrast"), valContrast: $("valContrast"),
+    rngBlur: $("rngBlur"), valBlur: $("valBlur"), chkInvert: $("chkInvert"),
+    rngOutLo: $("rngOutLo"), valOutLo: $("valOutLo"),
+    rngOutHi: $("rngOutHi"), valOutHi: $("valOutHi"),
+    numPhys: $("numPhys"), selUnit: $("selUnit"),
+    selPreview: $("selPreview"), rngNorm: $("rngNorm"), valNorm: $("valNorm"), chkFlip: $("chkFlip"),
+    chkLayers: $("chkLayers"), numLayerCount: $("numLayerCount"),
+    btnLayerEven: $("btnLayerEven"), layerRows: $("layerRows"),
+    selExport: $("selExport"), chkMeta: $("chkMeta"), btnExport: $("btnExport"),
+    presets: $("presets"), statRange: $("statRange"), toast: $("toast"),
+    btnPick: $("btnPick"), btnDemo: $("btnDemo"), btnHandoff: $("btnHandoff"),
+    btnViewSplit: $("btnViewSplit"), btnViewSrc: $("btnViewSrc"), btnViewDst: $("btnViewDst"),
   };
 
-  function hexToRgb(hex) {
-    const n = parseInt(hex.slice(1), 16);
-    return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
-  }
-  function rgbToHex(rgb) {
-    const h = (v) => Math.round(v * 255).toString(16).padStart(2, "0");
-    return "#" + h(rgb[0]) + h(rgb[1]) + h(rgb[2]);
+  /** 新面板引入的状态（补齐默认值，避免 readUI/render 读到 undefined）。 */
+  Object.assign(state, {
+    view: "split", preview: "gray", hist: null, layers: [], layersOn: false,
+    selLayer: 0, normStrength: 1, flipGreen: false, phys: 10, unit: "mm",
+  });
+
+  /** 顶部提示（3 秒后自动淡出）。 */
+  let toastTimer = 0;
+  function toast(msg) {
+    ui.toast.textContent = msg;
+    ui.toast.classList.add("on");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => ui.toast.classList.remove("on"), 3000);
   }
 
+  // ---------------- 视图切换 ----------------
+  function setView(view) {
+    state.view = view;
+    document.body.dataset.view = view;
+    for (const [btn, name] of [[ui.btnViewSplit, "split"], [ui.btnViewSrc, "src"], [ui.btnViewDst, "dst"]]) {
+      btn.setAttribute("aria-pressed", String(name === view));
+    }
+  }
+  ui.btnViewSplit.addEventListener("click", () => setView("split"));
+  ui.btnViewSrc.addEventListener("click", () => setView("src"));
+  ui.btnViewDst.addEventListener("click", () => setView("dst"));
+  setView("split");
+
+  // ---------------- 参数 ↔ 界面 ----------------
+  /** 把面板上的值写进 state.params（用户改控件时调用）。 */
   function readUI() {
     const p = state.params;
     p.source = ui.selSource.value;
-    p.target = hexToRgb(ui.inColor.value);
-    p.tol = +ui.rngTol.value;
-    p.inLo = +ui.rngInLo.value;
-    p.inHi = +ui.rngInHi.value;
-    p.gamma = +ui.rngGamma.value;
-    p.contrast = +ui.rngContrast.value;
-    p.blur = +ui.rngBlur.value;
+    p.tol = parseFloat(ui.rngTol.value);
+    p.inLo = clampPct(+ui.numInLo.value);
+    p.inHi = clampPct(+ui.numInHi.value);
+    p.gamma = parseFloat(ui.rngGamma.value);
+    p.contrast = parseFloat(ui.rngContrast.value);
+    p.blur = parseFloat(ui.rngBlur.value);
     p.invert = ui.chkInvert.checked;
-    p.outLo = +ui.rngOutLo.value;
-    p.outHi = +ui.rngOutHi.value;
-    $("rowColor").hidden = p.source !== "color";
+    p.outLo = parseFloat(ui.rngOutLo.value);
+    p.outHi = parseFloat(ui.rngOutHi.value);
+    state.preview = ui.selPreview.value;
+    state.normStrength = parseFloat(ui.rngNorm.value);
+    state.flipGreen = ui.chkFlip.checked;
+    state.layersOn = ui.chkLayers.checked;
+    state.phys = parseFloat(ui.numPhys.value) || 10;
+    state.unit = ui.selUnit.value;
+    ui.rowColor.hidden = p.source !== "color_distance";
+    ui.hintPick.hidden = p.source !== "color_distance";
   }
 
+  function clampPct(v) {
+    if (!isFinite(v)) return 0;
+    return Math.max(0, Math.min(1, v / 100));
+  }
+
+  /** 把 state.params 反映回界面（预设、自动色阶、载图后调用）。 */
   function writeUI() {
     const p = state.params;
     ui.selSource.value = p.source;
-    ui.inColor.value = rgbToHex(p.target);
-    ui.rngTol.value = p.tol;
-    ui.rngInLo.value = p.inLo; ui.rngInHi.value = p.inHi;
-    ui.rngGamma.value = p.gamma; ui.rngContrast.value = p.contrast; ui.rngBlur.value = p.blur;
-    ui.chkInvert.checked = p.invert;
-    ui.rngOutLo.value = p.outLo; ui.rngOutHi.value = p.outHi;
-    $("rowColor").hidden = p.source !== "color";
-    refreshValueLabels();
+    ui.rngTol.value = String(p.tol);
+    ui.valTol.textContent = p.tol.toFixed(2);
+    ui.numInLo.value = (p.inLo * 100).toFixed(1);
+    ui.numInHi.value = (p.inHi * 100).toFixed(1);
+    ui.rngGamma.value = String(p.gamma);
+    ui.valGamma.textContent = p.gamma.toFixed(2);
+    ui.rngContrast.value = String(p.contrast);
+    ui.valContrast.textContent = p.contrast.toFixed(2);
+    ui.rngBlur.value = String(p.blur);
+    ui.valBlur.textContent = Number(p.blur).toFixed(1);
+    ui.chkInvert.checked = !!p.invert;
+    ui.rngOutLo.value = String(p.outLo);
+    ui.valOutLo.textContent = Math.round(p.outLo * 100) + "%";
+    ui.rngOutHi.value = String(p.outHi);
+    ui.valOutHi.textContent = Math.round(p.outHi * 100) + "%";
+    ui.rowColor.hidden = p.source !== "color_distance";
+    ui.hintPick.hidden = p.source !== "color_distance";
   }
 
-  function refreshValueLabels() {
-    const p = state.params;
-    $("valTol").textContent = p.tol.toFixed(2);
-    $("valInLo").textContent = (p.inLo * 100).toFixed(0) + "%";
-    $("valInHi").textContent = (p.inHi * 100).toFixed(0) + "%";
-    $("valGamma").textContent = p.gamma.toFixed(2);
-    $("valContrast").textContent = p.contrast.toFixed(2);
-    $("valBlur").textContent = p.blur.toFixed(1);
-    $("valOutLo").textContent = (p.outLo * 100).toFixed(0) + "%";
-    $("valOutHi").textContent = (p.outHi * 100).toFixed(0) + "%";
+  /** 滑杆旁的数值标签与重绘。 */
+  function onParamChange() {
+    readUI();
+    writeUI();
+    schedule();
   }
-
-  for (const el of Object.values(ui)) {
-    el.addEventListener("input", () => { readUI(); refreshValueLabels(); schedule(); });
-    el.addEventListener("change", () => { readUI(); refreshValueLabels(); schedule(); });
+  for (const el of [ui.rngTol, ui.rngGamma, ui.rngContrast, ui.rngBlur, ui.rngOutLo, ui.rngOutHi, ui.rngNorm]) {
+    el.addEventListener("input", onParamChange);
   }
-
-  document.querySelectorAll("#presets button").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const name = btn.dataset.preset;
-      if (name === "reset") {
-        state.params = {
-          source: "luma", target: [0.78, 0.63, 0.42], tol: 0.25,
-          inLo: 0, inHi: 1, gamma: 1, contrast: 1.2, blur: 0.6,
-          invert: false, outLo: 0, outHi: 1,
-        };
-      } else {
-        Object.assign(state.params, PRESETS[name]);
+  for (const el of [ui.numInLo, ui.numInHi]) {
+    el.addEventListener("change", () => {
+      readUI();
+      if (state.params.inLo > state.params.inHi) {
+        const t = state.params.inLo; state.params.inLo = state.params.inHi; state.params.inHi = t;
       }
-      writeUI();
-      schedule();
+      writeUI(); schedule();
     });
+  }
+  for (const el of [ui.chkInvert, ui.chkFlip, ui.selPreview, ui.selUnit, ui.numPhys]) {
+    el.addEventListener("change", onParamChange);
+  }
+  ui.selSource.addEventListener("change", () => { readUI(); writeUI(); updateHist(); schedule(); });
+  ui.inColor.addEventListener("input", () => {
+    state.params.target = hexToRgb(ui.inColor.value);
+    schedule();
+  });
+
+  function hexToRgb(hex) {
+    const n = parseInt(hex.replace("#", ""), 16);
+    return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
+  }
+
+  // ---------------- 直方图 ----------------
+  /** 直方图 + 两条可拖竖线（与桌面版同一交互：拖动 = 改黑场/白场）。 */
+  function updateHist() {
+    const cv = ui.hist;
+    const g = cv.getContext("2d");
+    const W = cv.width, H = cv.height;
+    g.clearRect(0, 0, W, H);
+    const h = state.hist;
+    if (!h) {
+      g.fillStyle = "#2a2c30";
+      g.fillRect(0, H / 2 - 1, W, 2);
+      return;
+    }
+    let peak = 1;
+    for (let i = 0; i < 256; i++) peak = Math.max(peak, h[i]);
+    g.fillStyle = "#4e7fb8";
+    for (let i = 0; i < 256; i++) {
+      const bh = Math.round((Math.log(1 + h[i]) / Math.log(1 + peak)) * (H - 6));
+      g.fillRect((i / 256) * W, H - bh, Math.max(1, W / 256 - 0.4), bh);
+    }
+    const drawMark = (t, color) => {
+      const x = Math.max(0, Math.min(W - 1, t * W));
+      g.strokeStyle = color;
+      g.lineWidth = 3;
+      g.beginPath(); g.moveTo(x, 0); g.lineTo(x, H); g.stroke();
+    };
+    drawMark(state.params.inLo, "#ffd75e");
+    drawMark(state.params.inHi, "#e8e8e8");
+  }
+
+  ui.hist.addEventListener("pointerdown", (ev) => {
+    const rect = ui.hist.getBoundingClientRect();
+    const t = Math.max(0, Math.min(1, (ev.clientX - rect.left) / rect.width));
+    const p = state.params;
+    const pick = Math.abs(t - p.inLo) <= Math.abs(t - p.inHi) ? "lo" : "hi";
+    const move = (e) => {
+      const v = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+      if (pick === "lo") p.inLo = Math.min(v, p.inHi - 0.002);
+      else p.inHi = Math.max(v, p.inLo + 0.002);
+      ui.numInLo.value = (p.inLo * 100).toFixed(1);
+      ui.numInHi.value = (p.inHi * 100).toFixed(1);
+      updateHist(); schedule();
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    move(ev);
+  });
+
+  ui.btnAuto.addEventListener("click", () => {
+    if (!state.rgba) return;
+    const raw = E.extractSource(state.rgba, state.params.source, state.params.target, state.params.tol);
+    const lv = E.autoLevels(raw, 0.005, 0.995);
+    state.params.inLo = lv.lo;
+    state.params.inHi = lv.hi;
+    writeUI(); updateHist(); schedule();
+  });
+
+  // ---------------- 区域分层（台阶化） ----------------
+  /** 等分模板：n 层，高度从 0.15 线性到 0.85（与桌面版一致）。 */
+  function evenLayers(n) {
+    const out = [];
+    for (let i = 0; i < n; i++) {
+      out.push({
+        mode: "band",
+        lo: i / n,
+        hi: (i + 1) / n,
+        height: n === 1 ? 0.5 : 0.15 + (0.7 * i) / (n - 1),
+        feather: 0,
+      });
+    }
+    return out;
+  }
+
+  /** 重建层表（只在层数/模式变化时调用，避免打断输入焦点）。 */
+  function buildLayerRows() {
+    if (!state.layers.length) state.layers = evenLayers(3);
+    ui.layerRows.innerHTML = "";
+    state.layers.forEach((L, i) => {
+      const row = document.createElement("div");
+      row.className = "lrow" + (state.selLayer === i ? " sel" : "");
+
+      const sel = document.createElement("select");
+      for (const [v, t] of [["band", "亮度区间"], ["color", "颜色选区"]]) {
+        const o = document.createElement("option");
+        o.value = v; o.textContent = t;
+        sel.appendChild(o);
+      }
+      sel.value = L.mode;
+      sel.addEventListener("change", () => {
+        L.mode = sel.value;
+        state.selLayer = i;
+        buildLayerRows(); schedule();
+      });
+      sel.addEventListener("focus", () => { state.selLayer = i; });
+
+      const range = document.createElement("div");
+      range.style.display = "flex";
+      range.style.gap = "4px";
+      if (L.mode === "band") {
+        const lo = document.createElement("input");
+        lo.type = "number"; lo.min = "0"; lo.max = "100"; lo.step = "1";
+        lo.value = Math.round(L.lo * 100); lo.title = "本层起点（%）";
+        lo.style.width = "52px";
+        lo.addEventListener("input", () => {
+          L.lo = Math.max(0, Math.min(1, (+lo.value || 0) / 100));
+          state.selLayer = i; schedule();
+        });
+        const hi = document.createElement("input");
+        hi.type = "number"; hi.min = "0"; hi.max = "100"; hi.step = "1";
+        hi.value = Math.round(L.hi * 100); hi.title = "本层终点（%）";
+        hi.style.width = "52px";
+        hi.addEventListener("input", () => {
+          L.hi = Math.max(0, Math.min(1, (+hi.value || 0) / 100));
+          state.selLayer = i; schedule();
+        });
+        range.append(lo, document.createTextNode("—"), hi);
+      } else {
+        const note = document.createElement("span");
+        note.style.fontSize = "11px";
+        note.style.color = "var(--muted)";
+        note.textContent = "用面板 ② 的颜色";
+        range.append(note);
+      }
+
+      const hgt = document.createElement("input");
+      hgt.type = "number"; hgt.min = "0"; hgt.max = "100"; hgt.step = "1";
+      hgt.value = Math.round(L.height * 100); hgt.title = "本层高度（%）";
+      hgt.addEventListener("input", () => {
+        L.height = Math.max(0, Math.min(1, (+hgt.value || 0) / 100));
+        state.selLayer = i; schedule();
+      });
+
+      const fea = document.createElement("input");
+      fea.type = "number"; fea.min = "0"; fea.max = "10"; fea.step = "1";
+      fea.value = Math.round((L.feather || 0) * 100); fea.title = "边界过渡宽度（%）";
+      fea.addEventListener("input", () => {
+        L.feather = Math.max(0, Math.min(0.1, (+fea.value || 0) / 100));
+        state.selLayer = i; schedule();
+      });
+
+      row.append(sel, range, hgt, fea);
+      ui.layerRows.appendChild(row);
+    });
+  }
+
+  ui.chkLayers.addEventListener("change", () => {
+    state.layersOn = ui.chkLayers.checked;
+    if (state.layersOn && !state.layers.length) {
+      state.layers = evenLayers(Math.max(2, Math.min(8, +ui.numLayerCount.value || 3)));
+      buildLayerRows();
+    }
+    schedule();
+  });
+  ui.numLayerCount.addEventListener("change", () => {
+    const n = Math.max(2, Math.min(8, Math.round(+ui.numLayerCount.value || 3)));
+    ui.numLayerCount.value = String(n);
+    state.layers = evenLayers(n);
+    state.selLayer = 0;
+    buildLayerRows();
+    schedule();
+  });
+  ui.btnLayerEven.addEventListener("click", () => {
+    const n = Math.max(2, Math.min(8, Math.round(+ui.numLayerCount.value || 3)));
+    state.layers = evenLayers(n);
+    state.selLayer = 0;
+    buildLayerRows();
+    schedule();
   });
 
   // ---------------- 渲染 ----------------
-  let rafPending = false;
+  let timer = 0;
   function schedule() {
     state.dirty = true;
-    if (rafPending) return;
-    rafPending = true;
-    requestAnimationFrame(() => {
-      rafPending = false;
-      if (state.dirty) render();
-    });
+    clearTimeout(timer);
+    timer = setTimeout(render, 60);
   }
 
+  /** 一次完整重算：来源 → 色阶/曲线 → （可选）分层 → 预览。 */
   function render() {
-    state.dirty = false;
-    if (!state.rgba) return;
+    if (!state.rgba) { updateHist(); return; }
     const t0 = performance.now();
-    const { width: w, height: h, params: p } = state;
-    const src = E.extractSource(state.rgba, p.source, p.target, p.tol);
-    const field = E.mapField(src, w, h, p);
+    const p = state.params;
+    const w = state.width, h = state.height;
+
+    let raw;
+    try {
+      raw = E.extractSource(state.rgba, p.source, p.target, p.tol);
+    } catch (err) {
+      toast("取源失败：" + (err.message || err));
+      return;
+    }
+    state.hist = E.histogram(E.blurField(raw, w, h, p.blur));
+
+    let field;
+    try {
+      field = E.mapField(raw, w, h, p);
+      if (state.layersOn && state.layers.length) {
+        field = E.applyLayers(field, state.layers, 0);
+      }
+    } catch (err) {
+      toast("映射失败：" + (err.message || err));
+      return;
+    }
     state.field = field;
 
-    // 高度图绘制：直接写 ImageData，避免额外缩放误差
-    cvDst.width = w; cvDst.height = h;
+    // 预览
+    let rgba;
+    if (state.preview === "normal") {
+      rgba = E.normalRGBA(field, w, h, state.normStrength, state.flipGreen);
+    } else if (state.preview === "shaded") {
+      rgba = E.shadeRGBA(field, w, h);
+    } else {
+      rgba = E.fieldToRGBA(field);
+    }
     const ctx = cvDst.getContext("2d");
-    ctx.putImageData(new ImageData(E.fieldToRGBA(field), w, h), 0, 0);
+    cvDst.width = w; cvDst.height = h;
+    ctx.putImageData(new ImageData(rgba, w, h), 0, 0);
 
-    const s = E.stats(field);
-    $("statInfo").textContent =
-      `${w}×${h} · ${(performance.now() - t0).toFixed(0)} ms`;
-    $("statRange").textContent =
-      `min ${s.min.toFixed(3)} · max ${s.max.toFixed(3)} · mean ${s.mean.toFixed(3)}`;
-    $("btnHandoff").disabled = !bridge.connected;
-    $("btnDownload").disabled = false;
+    const st = E.stats(field);
+    ui.statRange.textContent =
+      `${w}×${h} · ${Math.round(performance.now() - t0)} ms · min ${st.min.toFixed(3)} · max ${st.max.toFixed(3)} · mean ${st.mean.toFixed(3)}`;
+    updateHist();
   }
 
-  // ---------------- 载入图片 ----------------
-  function showImage(img, w, h) {
-    state.img = img; state.width = w; state.height = h;
-    const tmp = document.createElement("canvas");
-    tmp.width = w; tmp.height = h;
-    const ctx = tmp.getContext("2d");
-    ctx.drawImage(img, 0, 0, w, h);
-    state.rgba = ctx.getImageData(0, 0, w, h).data;
-
-    cvSrc.width = w; cvSrc.height = h;
-    cvSrc.getContext("2d").drawImage(img, 0, 0, w, h);
-    cvSrc.hidden = false; $("emptySrc").hidden = true;
-    cvDst.hidden = false; $("emptyDst").hidden = true;
-    $("tagSrc").textContent = `原图 · ${w}×${h}`;
-    $("tagDst").textContent = "高度图 · 白=高 黑=低";
-    schedule();
+  // ---------------- 载图 ----------------
+  function showImage(source, w, h) {
+    cvSrc.width = w;
+    cvSrc.height = h;
+    const ctx = cvSrc.getContext("2d", { willReadFrequently: true });
+    ctx.clearRect(0, 0, w, h);
+    ctx.drawImage(source, 0, 0, w, h);
+    const data = ctx.getImageData(0, 0, w, h);
+    state.rgba = data.data;
+    state.width = w;
+    state.height = h;
+    state.dirty = true;
+    cvSrc.hidden = false;
+    cvDst.hidden = false;
+    $("emptySrc").hidden = true;
+    $("emptyDst").hidden = true;
+    $("tagSrc").textContent = "原图 · " + w + "×" + h;
+    $("tagDst").textContent = "高度图 · 白 = 高 黑 = 低";
+    ui.imgInfo.textContent = `${w}×${h} · ${(w * h / 1e6).toFixed(2)} MP`;
+    ui.btnHandoff.disabled = !bridge.port;
+    render();
   }
 
   function loadBlob(blob) {
     const url = URL.createObjectURL(blob);
     const img = new Image();
     img.onload = () => {
-      // 超大图先降采样，避免浏览器内存与像素上限问题
-      const MAX_SIDE = 2048;
-      const scale = Math.min(1, MAX_SIDE / Math.max(img.naturalWidth, img.naturalHeight));
-      showImage(img, Math.max(1, Math.round(img.naturalWidth * scale)),
-        Math.max(1, Math.round(img.naturalHeight * scale)));
+      showImage(img, img.naturalWidth, img.naturalHeight);
       URL.revokeObjectURL(url);
     };
     img.onerror = () => {
       URL.revokeObjectURL(url);
-      $("emptySrc").textContent = "这张图片无法解码（格式不支持或文件损坏）";
+      toast("图片解码失败：文件可能已损坏或格式不受支持");
     };
     img.src = url;
   }
 
-  $("btnPick").addEventListener("click", async () => {
-    if (bridge.connected) {
+  /** 选图：有宿主就走宿主原生对话框，否则用 input[type=file]。 */
+  ui.btnPick.addEventListener("click", async () => {
+    if (bridge.port) {
       try {
-        // 宿主对 image.pick 只接受空 payload（多一个键就会被判为非法）
-        const res = await bridge.call("image.pick", {}, 300000);
-        const blob = pickResultToBlob(res);
-        if (blob) { loadBlob(blob); return; }
+        const res = await bridge.call("image.pick", {}, 120000);
+        const blob = blobFromPick(res);
+        if (!blob) { toast("宿主没有返回可用的图片数据"); return; }
+        loadBlob(blob);
+        return;
       } catch (err) {
-        // 宿主拒绝或超时 → 退回本地文件选择（仅开发/浏览器调试）
+        toast("宿主选图失败：" + (err.message || err));
+        return;
       }
     }
-    $("fileInput").click();
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.onchange = () => { if (input.files && input.files[0]) loadBlob(input.files[0]); };
+    input.click();
   });
 
-  /** 宿主的选图结果可能是 ArrayBuffer / 字节数组 / dataURL，这里统一成 Blob。 */
-  function pickResultToBlob(res) {
-    if (!res || typeof res !== "object") return null;
-    const raw = res.pngBytes || res.bytes || res.imageBytes || res.data;
+  /** 宿主返回的图可能是 ArrayBuffer / Uint8Array / dataUrl，统一转 Blob。 */
+  function blobFromPick(res) {
+    if (!res) return null;
+    const raw = res.pngBytes || res.bytes || res.data;
     if (raw instanceof ArrayBuffer) return new Blob([raw], { type: "image/png" });
     if (ArrayBuffer.isView(raw)) return new Blob([raw.buffer], { type: "image/png" });
     if (Array.isArray(raw)) return new Blob([new Uint8Array(raw)], { type: "image/png" });
@@ -724,47 +1240,111 @@ footer .mono{font-variant-numeric:tabular-nums}
     return null;
   }
 
-  $("fileInput").addEventListener("change", (e) => {
-    const file = e.target.files && e.target.files[0];
-    if (file) loadBlob(file);
-    e.target.value = "";
+  // 拖放 / 粘贴
+  window.addEventListener("dragover", (e) => { e.preventDefault(); });
+  window.addEventListener("drop", (e) => {
+    e.preventDefault();
+    const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    if (f) loadBlob(f);
+  });
+  window.addEventListener("paste", (e) => {
+    const items = e.clipboardData && e.clipboardData.items;
+    if (!items) return;
+    for (const it of items) {
+      if (it.type.startsWith("image/")) { loadBlob(it.getAsFile()); break; }
+    }
+  });
+
+  // 点原图取色（颜色距离模式）
+  cvSrc.addEventListener("click", (ev) => {
+    if (state.params.source !== "color_distance" || !state.rgba) return;
+    const rect = cvSrc.getBoundingClientRect();
+    const x = Math.floor(((ev.clientX - rect.left) / rect.width) * state.width);
+    const y = Math.floor(((ev.clientY - rect.top) / rect.height) * state.height);
+    const p = (Math.max(0, Math.min(state.height - 1, y)) * state.width + Math.max(0, Math.min(state.width - 1, x))) * 4;
+    const rgb = [state.rgba[p] / 255, state.rgba[p + 1] / 255, state.rgba[p + 2] / 255];
+    state.params.target = rgb;
+    ui.inColor.value = "#" + rgb.map((v) => Math.round(v * 255).toString(16).padStart(2, "0")).join("");
+    schedule();
   });
 
   // ---------------- 导出 ----------------
-  $("btnDownload").addEventListener("click", () => {
-    if (!state.field) return;
-    const png = E.encodePng16(state.field, state.width, state.height);
-    const url = URL.createObjectURL(new Blob([png], { type: "image/png" }));
+  function download(bytes, name, type) {
+    const blob = bytes instanceof Blob ? bytes : new Blob([bytes], { type });
+    const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "heightmap-16bit.png";
+    a.download = name;
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 4000);
+  }
+
+  /** 物理尺寸：按图像宽高比与「物理高度上限」换算毫米。 */
+  function physSize() {
+    const mm = state.unit === "mm" ? state.phys : state.unit === "cm" ? state.phys * 10 : state.phys * 25.4;
+    const hMm = mm;
+    const wMm = (mm * state.width) / Math.max(1, state.height);
+    return { wMm, hMm };
+  }
+
+  function metaText() {
+    const st = state.field ? E.stats(state.field) : { min: 0, max: 0, mean: 0 };
+    return JSON.stringify({
+      app: "HeightForge Workshop Module",
+      moduleVersion: MODULE_VERSION,
+      width: state.width, height: state.height,
+      params: Object.assign({}, state.params, {
+        layers: state.layersOn ? state.layers : [],
+        physical: { heightMm: physSize().hMm, unit: state.unit },
+      }),
+      stats: st,
+    }, null, 2);
+  }
+
+  ui.btnExport.addEventListener("click", () => {
+    if (!state.field) { toast("先载入图片"); return; }
+    const w = state.width, h = state.height, f = state.field;
+    const kind = ui.selExport.value;
+    try {
+      if (kind === "png16") download(E.encodePngGray(f, w, h, 16), "heightmap-16.png", "image/png");
+      else if (kind === "png8") download(E.encodePngGray(f, w, h, 8), "heightmap-8.png", "image/png");
+      else if (kind === "normal") download(E.encodePngRgb(E.normalRGBA(f, w, h, state.normStrength, state.flipGreen), w, h), "normal.png", "image/png");
+      else if (kind === "obj") {
+        const ph = physSize();
+        download(E.buildObj(f, w, h, { widthMm: ph.wMm, heightMm: ph.hMm, heightScale: ph.hMm }), "heightmap.obj", "text/plain");
+      } else {
+        download(metaText(), "heightmap.json", "application/json");
+      }
+      if (ui.chkMeta.checked && kind !== "meta") download(metaText(), "heightmap.json", "application/json");
+    } catch (err) {
+      toast("导出失败：" + (err.message || err));
+    }
   });
 
-  $("btnHandoff").addEventListener("click", async () => {
-    if (!state.field || !bridge.connected) return;
+  // ---------------- 交给 Lumina ----------------
+  ui.btnHandoff.addEventListener("click", async () => {
+    if (!state.field || !bridge.port) return;
     try {
       const png = await toPng8Buffer(state.field, state.width, state.height);
+      const ph = physSize();
       await bridge.call("handoff.image", {
         moduleId: MODULE_ID,
         moduleVersion: MODULE_VERSION,
         projectId: "hf-" + Date.now().toString(36),
-        pngBytes: png, // 宿主只认 ArrayBuffer，不是 Blob 也不是 dataURL
+        pngBytes: png,
         pixelWidth: state.width,
         pixelHeight: state.height,
-        recommendedWidthMm: 100,
-        recommendedHeightMm: (100 * state.height) / state.width,
+        recommendedWidthMm: Math.round(ph.wMm * 10) / 10,
+        recommendedHeightMm: Math.round(ph.hMm * 10) / 10,
         preserveCanvasBounds: true,
         colorLibraryId: null,
-        // 宿主会校验 recipeSource 的结构，字段名与层级都不能省
         recipeSource: {
           manifestSchemaVersion: 1,
           moduleId: MODULE_ID,
           moduleVersion: MODULE_VERSION,
           projectSchemaVersion: "heightforge.params/1",
           renderSchemaVersion: "heightforge.heightmap/1",
-          payload: { params: Object.assign({}, state.params), width: state.width, height: state.height },
+          payload: Object.assign({}, state.params, { width: state.width, height: state.height }),
         },
       }, 120000);
       $("hostBadge").textContent = "已交给 Lumina";
@@ -775,7 +1355,6 @@ footer .mono{font-variant-numeric:tabular-nums}
     }
   });
 
-  /** 交给宿主用标准 8 位 PNG，且必须是 ArrayBuffer。 */
   function toPng8Buffer(field, w, h) {
     const canvas = document.createElement("canvas");
     canvas.width = w;
@@ -788,6 +1367,15 @@ footer .mono{font-variant-numeric:tabular-nums}
       }, "image/png");
     });
   }
+
+  // ---------------- 预设 ----------------
+  ui.presets.addEventListener("click", (ev) => {
+    const btn = ev.target.closest("button[data-preset]");
+    if (!btn) return;
+    const preset = PRESETS[btn.dataset.preset];
+    if (preset) Object.assign(state.params, preset);
+    writeUI(); schedule();
+  });
 
   // ---------------- 示例图（本地合成，不读任何外部资源） ----------------
   function demoImage() {
@@ -819,19 +1407,21 @@ footer .mono{font-variant-numeric:tabular-nums}
     return c;
   }
 
-  $("btnDemo").addEventListener("click", () => {
+  ui.btnDemo.addEventListener("click", () => {
     const c = demoImage();
     showImage(c, c.width, c.height);
   });
-  // 调试/截图用：index.html?demo=1 直接加载示例
   if (/[?&]demo=1/.test(location.search)) {
-    setTimeout(() => $("btnDemo").click(), 0);
+    setTimeout(() => ui.btnDemo.click(), 0);
   }
 
-  // 初始化
+  // ---------------- 初始化 ----------------
   readUI();
-  refreshValueLabels();
+  writeUI();
+  buildLayerRows();
+  updateHist();
   setHostBadge(false);
+
 })();
 </script>
 </body>

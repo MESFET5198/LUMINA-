@@ -9,10 +9,10 @@
 
 - Module IDs affected: `studio.heightforge.heightmap` (new module, community publisher)
 - Immutable GitHub Release tags and assets:
-  `v1.0.0` → `studio.heightforge.heightmap-1.0.0.lumina-workshop`
-  — 162,859 bytes, sha256 `05645d693e2d9c55532fba5c75fed860a950f5eb7afe5d3a48af787049062956`,
+  `v1.0.0` → `studio.heightforge.heightmap-1.1.0.lumina-workshop`
+  — 198,976 bytes, sha256 `7c027b4445c35b978bb8bc98b6e6ce76033525e5a588bdd8538d9e96cbb9821a`,
   manifest sha256 `4b305567d0593b31586436cd103e38f78c6918cec80ec887c1db849127e86f88`.
-  Asset URL: `https://github.com/<owner>/<repo>/releases/download/v1.0.0/studio.heightforge.heightmap-1.0.0.lumina-workshop`
+  Asset URL: `https://github.com/<owner>/<repo>/releases/download/v1.0.0/studio.heightforge.heightmap-1.1.0.lumina-workshop`
 - Permission or compatibility changes:
   new module declaring `image.pick` and `handoff.image` only (no network, no storage).
   `workshopApi`: `>=1.0.0 <2.0.0`; `luminaVersion`: `>=2.0.0`.
@@ -24,10 +24,10 @@
 
 - 涉及的模块 ID：`studio.heightforge.heightmap`（新模块，社区发布者）
 - 不可变 GitHub Release 标签与资产：
-  `v1.0.0` → `studio.heightforge.heightmap-1.0.0.lumina-workshop`
-  —— 162,859 字节，sha256 `05645d693e2d9c55532fba5c75fed860a950f5eb7afe5d3a48af787049062956`，
+  `v1.0.0` → `studio.heightforge.heightmap-1.1.0.lumina-workshop`
+  —— 198,976 字节，sha256 `7c027b4445c35b978bb8bc98b6e6ce76033525e5a588bdd8538d9e96cbb9821a`，
   manifest sha256 `4b305567d0593b31586436cd103e38f78c6918cec80ec887c1db849127e86f88`。
-  资产地址：`https://github.com/<owner>/<repo>/releases/download/v1.0.0/studio.heightforge.heightmap-1.0.0.lumina-workshop`
+  资产地址：`https://github.com/<owner>/<repo>/releases/download/v1.0.0/studio.heightforge.heightmap-1.1.0.lumina-workshop`
 - 权限或兼容范围变化：
   新模块，只申请 `image.pick` 与 `handoff.image`（无网络、无工程存储权限）。
   `workshopApi`：`>=1.0.0 <2.0.0`；`luminaVersion`：`>=2.0.0`。
@@ -79,11 +79,11 @@ Manifest `1` 为当前稳定契约，因此声明 `>=1.0.0 <2.0.0`；`luminaVers
 ## 验证输出 / Verification
 
 ```text
-$ python tools/build_package.py --check dist/studio.heightforge.heightmap-1.0.0.lumina-workshop
-[ok] dist\studio.heightforge.heightmap-1.0.0.lumina-workshop
+$ python tools/build_package.py --check dist/studio.heightforge.heightmap-1.1.0.lumina-workshop
+[ok] dist\studio.heightforge.heightmap-1.1.0.lumina-workshop
      id=studio.heightforge.heightmap version=1.0.0
-     162859 字节 / 解压 188382 字节 / 6 个文件
-     sha256=05645d693e2d9c55532fba5c75fed860a950f5eb7afe5d3a48af787049062956
+     198976 字节 / 解压 244897 字节 / 6 个文件
+     sha256=7c027b4445c35b978bb8bc98b6e6ce76033525e5a588bdd8538d9e96cbb9821a
      manifestSha256=4b305567d0593b31586436cd103e38f78c6918cec80ec887c1db849127e86f88
      files=LICENSE, README.md, assets/gallery/screenshot.png, assets/icon.png, manifest.json, ui/index.html
 
