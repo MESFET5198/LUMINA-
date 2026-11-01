@@ -85,3 +85,46 @@ cp "$APPDATA/lumina-electron/workshop/install-state.json.bak" \
 Registry 审核会问“实际测试过什么场景”。目前我能给出的证据是浏览器内的引擎与打包
 自检，缺的正是“宿主里点一遍”。这一步做完，PR 里的验证一栏就能写实测；不做的话，
 PR 描述里已经如实标注了“尚未在真机宿主验证”。
+
+---
+
+## 实测结果（2026-11-02，已完成）
+
+环境：Lumina Studio 2.0.0-beta（`versions/9c90c988…`），Windows 11 `10.0.26100`。
+
+安装没有走 UI 点击，而是调用客户端自带的工坊后端接口（与工坊页面同一条链路）：
+
+```text
+POST /api/workshop/v1/install/local      (multipart, field=archive)  → 200 ok
+POST /api/workshop/v1/modules/studio.heightforge.heightmap/activate   → 200 ok
+GET  /api/workshop/v1/modules                                          → source=local, active=1.0.0
+```
+
+`install-state.json` 里新增条目：`{"module_id":"studio.heightforge.heightmap","source":"local",
+"official":false,"enabled":true,"active_version":"1.0.0","versions":["1.0.0"]}`。
+
+截图与判据：
+
+| 环节 | 结果 | 证据 |
+| --- | --- | --- |
+| 工坊列表 | 出现「HeightForge 高度图」，标记**未审核**，状态「已启用 · 当前版本 1.0.0」 | `.tmp/screen2.png` |
+| 点「打开」 | 模块在沙箱 iframe 内运行，徽标**已连接 Lumina** | `docs/ui_in_lumina.png` |
+| 选图 | `image.pick` 打开宿主**原生**文件对话框并回传字节 | 同上（960×640 图已载入） |
+| 处理 | 原图/高度图并排预览，状态栏 `min 0.000 · max 0.976 · mean 0.739` | 同上 |
+| 交给 Lumina | 客户端切到「图像转换」，左栏出现「创意工坊图像 · 来源模块 studio.heightforge.heightmap」 | `docs/ui_handoff_in_lumina.png` |
+
+两个需要注意的环境坑（会误导排查）：
+
+1. 从带 `ELECTRON_RUN_AS_NODE=1` 的 shell 里启动 `Lumina Studio.exe`，Electron 会当 node 跑、
+   窗口一闪即退（退出码 0）。用 `env -u ELECTRON_RUN_AS_NODE` 启动即可。
+2. 窗口被其他置顶窗口遮住时，模拟点击会落到别的窗口上；把窗口移到空位再点。
+
+## 回滚
+
+```bash
+rm -rf "$APPDATA/lumina-electron/workshop/modules/studio.heightforge.heightmap"
+cp "$APPDATA/lumina-electron/workshop/install-state.json.bak-<时间戳>" \
+   "$APPDATA/lumina-electron/workshop/install-state.json"
+```
+
+（本次安装前的备份：`install-state.json.bak-20261102-002113`。）

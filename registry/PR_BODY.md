@@ -10,7 +10,7 @@
 - Module IDs affected: `studio.heightforge.heightmap` (new module, community publisher)
 - Immutable GitHub Release tags and assets:
   `v1.0.0` → `studio.heightforge.heightmap-1.0.0.lumina-workshop`
-  — 162,106 bytes, sha256 `17e92c08a8f3dc3421697fdb8e442d2d5050e9cb47909d3b142b7a70d66c30f0`,
+  — 162,859 bytes, sha256 `05645d693e2d9c55532fba5c75fed860a950f5eb7afe5d3a48af787049062956`,
   manifest sha256 `4b305567d0593b31586436cd103e38f78c6918cec80ec887c1db849127e86f88`.
   Asset URL: `https://github.com/<owner>/<repo>/releases/download/v1.0.0/studio.heightforge.heightmap-1.0.0.lumina-workshop`
 - Permission or compatibility changes:
@@ -25,7 +25,7 @@
 - 涉及的模块 ID：`studio.heightforge.heightmap`（新模块，社区发布者）
 - 不可变 GitHub Release 标签与资产：
   `v1.0.0` → `studio.heightforge.heightmap-1.0.0.lumina-workshop`
-  —— 162,106 字节，sha256 `17e92c08a8f3dc3421697fdb8e442d2d5050e9cb47909d3b142b7a70d66c30f0`，
+  —— 162,859 字节，sha256 `05645d693e2d9c55532fba5c75fed860a950f5eb7afe5d3a48af787049062956`，
   manifest sha256 `4b305567d0593b31586436cd103e38f78c6918cec80ec887c1db849127e86f88`。
   资产地址：`https://github.com/<owner>/<repo>/releases/download/v1.0.0/studio.heightforge.heightmap-1.0.0.lumina-workshop`
 - 权限或兼容范围变化：
@@ -61,9 +61,18 @@ JS/CSS 全部内联，无 `src=`/`href=` 外链，无 `eval`/动态 `import`。
 Manifest `1` 为当前稳定契约，因此声明 `>=1.0.0 <2.0.0`；`luminaVersion >= 2.0.0` 对应
 当前桌面版线。**尚未在真机宿主里跑过端到端**（见下），如需更保守的范围请直接告诉我。
 
-**尚未验证的部分（如实说明）**：模块的宿主桥接是按公开文档自实现的最小握手，
-尚未替换为官方 `@lumina/workshop-sdk`，也**没有在真实 Lumina 客户端里安装试跑**。
-本 PR 提交前若要补这一步，会先把结果补进本节。
+**已在真机宿主里跑通端到端（2026-11-02，Lumina Studio 2.0.0-beta，Windows 11 26100）**：
+用本机公开的工坊后端接口 `POST /api/workshop/v1/install/local` 装包并 `activate`，
+模块在工坊里显示为「未审核 · 已启用 · 当前版本 1.0.0」，点「打开」后运行于沙箱 iframe，
+徽标显示「已连接 Lumina」；`image.pick` 走宿主原生选图对话框取图，管线实时出高度图，
+点「交给 Lumina」后客户端自动切到「图像转换」，左栏出现「创意工坊图像」来源标注
+（`studio.heightforge.heightmap`）。截图见仓库 `docs/ui_in_lumina.png` 与
+`docs/ui_handoff_in_lumina.png`。
+
+**仍需说明的部分（如实标注）**：宿主桥接是按宿主 bundle 里的真实协议（`lumina.workshop.ready`
+→ `connect` + `MessagePort` → `lumina-workshop-rpc` 帧）自实现的，**没有用官方
+`@lumina/workshop-sdk` 依赖**——因为构建环境无法访问 npm/Release 资产。行为已按上述协议对齐，
+但若审核要求“必须依赖官方 SDK”，我可以改成引用 `1.0.2` 的 tgz 再重跑一遍。
 
 ---
 
@@ -73,8 +82,8 @@ Manifest `1` 为当前稳定契约，因此声明 `>=1.0.0 <2.0.0`；`luminaVers
 $ python tools/build_package.py --check dist/studio.heightforge.heightmap-1.0.0.lumina-workshop
 [ok] dist\studio.heightforge.heightmap-1.0.0.lumina-workshop
      id=studio.heightforge.heightmap version=1.0.0
-     162106 字节 / 解压 186080 字节 / 6 个文件
-     sha256=17e92c08a8f3dc3421697fdb8e442d2d5050e9cb47909d3b142b7a70d66c30f0
+     162859 字节 / 解压 188382 字节 / 6 个文件
+     sha256=05645d693e2d9c55532fba5c75fed860a950f5eb7afe5d3a48af787049062956
      manifestSha256=4b305567d0593b31586436cd103e38f78c6918cec80ec887c1db849127e86f88
      files=LICENSE, README.md, assets/gallery/screenshot.png, assets/icon.png, manifest.json, ui/index.html
 

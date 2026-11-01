@@ -14,8 +14,8 @@
 
 ```text
 文件     : studio.heightforge.heightmap-1.0.0.lumina-workshop
-字节数   : 162106
-sha256   : 17e92c08a8f3dc3421697fdb8e442d2d5050e9cb47909d3b142b7a70d66c30f0
+字节数   : 162859
+sha256   : 05645d693e2d9c55532fba5c75fed860a950f5eb7afe5d3a48af787049062956
 manifest : 4b305567d0593b31586436cd103e38f78c6918cec80ec887c1db849127e86f88
 ```
 

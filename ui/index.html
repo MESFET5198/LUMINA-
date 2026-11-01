@@ -467,61 +467,72 @@ footer .mono{font-variant-numeric:tabular-nums}
   };
 
   // ---------------- 宿主桥接（创意工坊）----------------
-  // 说明：正式模块应使用 @lumina/workshop-sdk。本模块在无网络环境构建，
-  // 因此按 docs/module-development.md 与 contracts.ts 描述自行实现最小握手：
-  //   parent → module : {type:"lumina.workshop.ready"}
-  //   module → parent : {type:"lumina.workshop.connect", moduleId, moduleVersion,
-  //                      apiVersion} + MessagePort（transfer）
-  //   port 上收发 {id, method, params} / {id, ok, result|error}
+  // 正式模块用 @lumina/workshop-sdk；本模块离线构建，按宿主真实协议自实现，握手是「模块先说话」：
+  //   1) module → parent: {type:"lumina.workshop.ready", moduleId, moduleVersion, apiVersion, events}
+  //   2) parent → module: {type:"lumina.workshop.connect", sessionId} + MessagePort（transfer）
+  //   3) port 上收发 {protocol:"lumina-workshop-rpc", version:1, kind:"request"|"response"|"event"}
   const bridge = {
     port: null,
     nextId: 1,
     pending: new Map(),
-    hostName: "",
-    onMessage(event) {
-      const data = event.data;
-      if (!data || data.type !== "lumina.workshop.ready") return;
+    timer: 0,
+    /** 宿主可能比脚本晚挂监听，反复广播 ready 直到连接成功。 */
+    announce(count = 0) {
       if (bridge.port) return;
-      const channel = new MessageChannel();
-      channel.port1.onmessage = (msg) => bridge._handle(msg.data);
-      channel.port1.start();
-      bridge.port = channel.port1;
       window.parent.postMessage(
         {
-          type: "lumina.workshop.connect",
+          type: "lumina.workshop.ready",
           moduleId: MODULE_ID,
           moduleVersion: MODULE_VERSION,
           apiVersion: API_VERSION,
+          events: [],
         },
         "*",
-        [channel.port2],
       );
+      if (count < 20) bridge.timer = setTimeout(() => bridge.announce(count + 1), 500);
+    },
+    accept(event) {
+      const data = event.data;
+      if (!data || data.type !== "lumina.workshop.connect" || bridge.port) return;
+      const port = event.ports && event.ports[0];
+      if (!port) return;
+      bridge.port = port;
+      port.onmessage = (msg) => bridge._handle(msg.data);
+      if (port.start) port.start();
+      clearTimeout(bridge.timer);
       setHostBadge(true);
       bridge.call("lifecycle.ready", {}).catch(() => {});
     },
     _handle(msg) {
-      if (!msg || typeof msg !== "object") return;
-      const entry = bridge.pending.get(msg.id);
+      if (!msg || msg.protocol !== "lumina-workshop-rpc" || msg.kind !== "response") return;
+      const entry = bridge.pending.get(msg.requestId);
       if (!entry) return;
-      bridge.pending.delete(msg.id);
+      bridge.pending.delete(msg.requestId);
       if (msg.ok) entry.resolve(msg.result);
       else entry.reject(Object.assign(new Error((msg.error && msg.error.message) || "RPC 失败"), { code: msg.error && msg.error.code }));
     },
-    call(method, params) {
+    call(method, payload, timeoutMs = 30000) {
       if (!bridge.port) return Promise.reject(new Error("未连接到 Lumina 宿主"));
-      const id = bridge.nextId++;
+      const requestId = "hf" + bridge.nextId++ + "-" + Math.random().toString(36).slice(2, 8);
       return new Promise((resolve, reject) => {
-        bridge.pending.set(id, { resolve, reject });
-        bridge.port.postMessage({ id, method, params: params || {} });
-        // 超时兜底：普通请求 30 秒
+        bridge.pending.set(requestId, { resolve, reject });
+        bridge.port.postMessage({
+          protocol: "lumina-workshop-rpc",
+          version: 1,
+          kind: "request",
+          requestId,
+          method,
+          payload: payload || {},
+        });
         setTimeout(() => {
-          if (bridge.pending.delete(id)) reject(new Error("宿主响应超时"));
-        }, 30000);
+          if (bridge.pending.delete(requestId)) reject(new Error("宿主响应超时"));
+        }, timeoutMs);
       });
     },
     get connected() { return !!bridge.port; },
   };
-  window.addEventListener("message", (e) => bridge.onMessage(e));
+  window.addEventListener("message", (e) => bridge.accept(e));
+  if (window.parent !== window) bridge.announce();
 
   function setHostBadge(connected) {
     const el = $("hostBadge");
@@ -685,15 +696,33 @@ footer .mono{font-variant-numeric:tabular-nums}
   $("btnPick").addEventListener("click", async () => {
     if (bridge.connected) {
       try {
-        const res = await bridge.call("image.pick", { accept: "image/*" });
-        const bytes = res && (res.pngBytes || res.bytes || res.imageBytes);
-        if (bytes) { loadBlob(new Blob([bytes], { type: "image/png" })); return; }
+        // 宿主对 image.pick 只接受空 payload（多一个键就会被判为非法）
+        const res = await bridge.call("image.pick", {}, 300000);
+        const blob = pickResultToBlob(res);
+        if (blob) { loadBlob(blob); return; }
       } catch (err) {
         // 宿主拒绝或超时 → 退回本地文件选择（仅开发/浏览器调试）
       }
     }
     $("fileInput").click();
   });
+
+  /** 宿主的选图结果可能是 ArrayBuffer / 字节数组 / dataURL，这里统一成 Blob。 */
+  function pickResultToBlob(res) {
+    if (!res || typeof res !== "object") return null;
+    const raw = res.pngBytes || res.bytes || res.imageBytes || res.data;
+    if (raw instanceof ArrayBuffer) return new Blob([raw], { type: "image/png" });
+    if (ArrayBuffer.isView(raw)) return new Blob([raw.buffer], { type: "image/png" });
+    if (Array.isArray(raw)) return new Blob([new Uint8Array(raw)], { type: "image/png" });
+    if (typeof res.dataUrl === "string") {
+      const base64 = res.dataUrl.split(",")[1] || "";
+      const bin = atob(base64);
+      const out = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+      return new Blob([out], { type: "image/png" });
+    }
+    return null;
+  }
 
   $("fileInput").addEventListener("change", (e) => {
     const file = e.target.files && e.target.files[0];
@@ -715,30 +744,49 @@ footer .mono{font-variant-numeric:tabular-nums}
 
   $("btnHandoff").addEventListener("click", async () => {
     if (!state.field || !bridge.connected) return;
-    const png8 = toPng8(state.field, state.width, state.height);
     try {
+      const png = await toPng8Buffer(state.field, state.width, state.height);
       await bridge.call("handoff.image", {
         moduleId: MODULE_ID,
         moduleVersion: MODULE_VERSION,
-        pngBytes: png8,
+        projectId: "hf-" + Date.now().toString(36),
+        pngBytes: png, // 宿主只认 ArrayBuffer，不是 Blob 也不是 dataURL
         pixelWidth: state.width,
         pixelHeight: state.height,
         recommendedWidthMm: 100,
-        recommendedHeightMm: 100 * (state.height / state.width),
+        recommendedHeightMm: (100 * state.height) / state.width,
         preserveCanvasBounds: true,
-      });
+        colorLibraryId: null,
+        // 宿主会校验 recipeSource 的结构，字段名与层级都不能省
+        recipeSource: {
+          manifestSchemaVersion: 1,
+          moduleId: MODULE_ID,
+          moduleVersion: MODULE_VERSION,
+          projectSchemaVersion: "heightforge.params/1",
+          renderSchemaVersion: "heightforge.heightmap/1",
+          payload: { params: Object.assign({}, state.params), width: state.width, height: state.height },
+        },
+      }, 120000);
       $("hostBadge").textContent = "已交给 Lumina";
+      $("hostBadge").className = "badge ok";
     } catch (err) {
       $("hostBadge").textContent = "交接失败：" + (err.message || "未知错误");
+      $("hostBadge").className = "badge warn";
     }
   });
 
-  /** 交给宿主用标准 8 位 PNG（宿主只接受标准 PNG）。 */
-  function toPng8(field, w, h) {
+  /** 交给宿主用标准 8 位 PNG，且必须是 ArrayBuffer。 */
+  function toPng8Buffer(field, w, h) {
     const canvas = document.createElement("canvas");
-    canvas.width = w; canvas.height = h;
+    canvas.width = w;
+    canvas.height = h;
     canvas.getContext("2d").putImageData(new ImageData(E.fieldToRGBA(field), w, h), 0, 0);
-    return canvas.toDataURL("image/png");
+    return new Promise((resolve, reject) => {
+      canvas.toBlob((blob) => {
+        if (!blob) { reject(new Error("PNG 编码失败")); return; }
+        blob.arrayBuffer().then(resolve, reject);
+      }, "image/png");
+    });
   }
 
   // ---------------- 示例图（本地合成，不读任何外部资源） ----------------
