@@ -9,7 +9,7 @@
 | --- | --- |
 | 模块 ID | `studio.heightforge.heightmap` |
 | 版本 | `1.0.0` |
-| 包文件 | `studio.heightforge.heightmap-1.1.0.lumina-workshop` |
+| 包文件 | `studio.heightforge.heightmap-1.1.1.lumina-workshop` |
 | 包大小 | 162,106 字节 |
 | 包 sha256 | `17e92c08a8f3dc3421697fdb8e442d2d5050e9cb47909d3b142b7a70d66c30f0` |
 | manifest sha256 | `4b305567d0593b31586436cd103e38f78c6918cec80ec887c1db849127e86f88` |
@@ -33,14 +33,14 @@
 
    ```text
    tag:      v1.0.0
-   asset:    studio.heightforge.heightmap-1.1.0.lumina-workshop
-   checksum: studio.heightforge.heightmap-1.1.0.lumina-workshop.sha256   # 可选但建议
+   asset:    studio.heightforge.heightmap-1.1.1.lumina-workshop
+   checksum: studio.heightforge.heightmap-1.1.1.lumina-workshop.sha256   # 可选但建议
    ```
 
 4. 确认这个地址能下载到东西（Registry 会从这里抓两次）：
 
    ```text
-   https://github.com/<owner>/<repo>/releases/download/v1.0.0/studio.heightforge.heightmap-1.1.0.lumina-workshop
+   https://github.com/<owner>/<repo>/releases/download/v1.0.0/studio.heightforge.heightmap-1.1.1.lumina-workshop
    ```
 
 > 资产字节必须与本地 `dist/` 里的一致。若你重新打包过，摘要会变，记录要跟着重新生成。

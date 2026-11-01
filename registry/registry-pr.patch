@@ -1,6 +1,6 @@
 diff --git a/modules/studio.heightforge.heightmap.json b/modules/studio.heightforge.heightmap.json
 new file mode 100644
-index 0000000000000000000000000000000000000000..88e31823f0721f324cdc2fc879edc68978936bf0
+index 0000000000000000000000000000000000000000..ad7b8242277953c9afb549081bac7bdedb23c87e
 --- /dev/null
 +++ b/modules/studio.heightforge.heightmap.json
 @@ -0,0 +1,36 @@
@@ -12,12 +12,12 @@ index 0000000000000000000000000000000000000000..88e31823f0721f324cdc2fc879edc689
 +  "publisher": "HeightForge Studio",
 +  "versions": [
 +    {
-+      "version": "1.1.0",
-+      "releaseTag": "v1.1.0",
-+      "assetName": "studio.heightforge.heightmap-1.1.0.lumina-workshop",
-+      "assetBytes": 198976,
-+      "sha256": "7c027b4445c35b978bb8bc98b6e6ce76033525e5a588bdd8538d9e96cbb9821a",
-+      "manifestSha256": "feb7c3bc0c8654b71dee29c59794741196cb6f16fe80da570ddf247840f76ae6",
++      "version": "1.1.1",
++      "releaseTag": "v1.1.1",
++      "assetName": "studio.heightforge.heightmap-1.1.1.lumina-workshop",
++      "assetBytes": 191580,
++      "sha256": "a72df5414aff3eaad06806777338d8655950f941cb0fa915db1b124c974a1163",
++      "manifestSha256": "bb419930a6030fd96265c01d8dc7059868ac8966dd58cc9a33ebec31fb15b634",
 +      "workshopApi": {
 +        "min": "1.0.0",
 +        "maxExclusive": "2.0.0"

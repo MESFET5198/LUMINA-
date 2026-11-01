@@ -295,6 +295,43 @@ function rgbaOf(r, g, b, a) {
   const last = vs[vs.length - 1].split(" ").slice(1).map(Number);
   ok("OBJ：末顶点 Z = 最高 × 缩放", near(last[1], 10), vs[vs.length - 1]);
 }
+
+// --- 台阶条几何 ------------------------------------------------------------
+{
+  const layers = [
+    { lo: 0, hi: 0.33, height: 0.15, feather: 0 },
+    { lo: 0.33, hi: 0.66, height: 0.5, feather: 0 },
+    { lo: 0.66, hi: 1, height: 0.85, feather: 0 },
+  ];
+  const edges = E.stripEdges(layers);
+  ok("台阶条：分界线含两端", edges.length === 4 && edges[0] === 0 && near(edges[3], 1), `[${edges}]`);
+  ok("台阶条：内部边界取各层终点", near(edges[1], 0.33, 1e-6) && near(edges[2], 0.66, 1e-6));
+
+  const nearEdge = E.stripHit(edges, 0.34, 0.03);
+  ok("台阶条：靠近边界 → 改区间", nearEdge.kind === "edge" && nearEdge.edge === 1, JSON.stringify(nearEdge));
+
+  const inside = E.stripHit(edges, 0.5, 0.03);
+  ok("台阶条：块中间 → 改高度", inside.kind === "height" && inside.index === 1, JSON.stringify(inside));
+
+  const left = E.stripHit(edges, 0.005, 0.02);
+  ok("台阶条：最左边 → 外侧边", left.kind === "edge" && left.edge === 0, JSON.stringify(left));
+}
+{
+  const layers = [
+    { lo: 0, hi: 0.5, height: 0.2, feather: 0 },
+    { lo: 0.5, hi: 1, height: 0.8, feather: 0 },
+  ];
+  // 边界只能在「前一层起点 + 1%」到「后一层终点 - 1%」之间移动
+  ok("台阶条：边界下侧夹 1%", near(E.clampEdge(layers, 1, 0.0, 0.01), 0.01, 1e-9),
+     E.clampEdge(layers, 1, 0.0, 0.01));
+  ok("台阶条：边界上侧夹 1%", near(E.clampEdge(layers, 1, 1.0, 0.01), 0.99, 1e-9),
+     E.clampEdge(layers, 1, 1.0, 0.01));
+  // 两侧加起来比 2×minWidth 还窄时，边界原地不动（返回原值，不产生空层）
+  const tight = [{ lo: 0.49, hi: 0.5, height: 0.2, feather: 0 }, { lo: 0.5, hi: 0.51, height: 0.8, feather: 0 }];
+  ok("台阶条：太窄时不动", near(E.clampEdge(tight, 1, 0.2, 0.02), 0.5, 1e-9), E.clampEdge(tight, 1, 0.2, 0.02));
+  ok("台阶条：外侧边不可拖", E.clampEdge(layers, 0, 0.3, 0.01) === null && E.clampEdge(layers, 2, 0.3, 0.01) === null);
+  ok("台阶条：普通拖动原样返回", near(E.clampEdge(layers, 1, 0.4, 0.01), 0.4, 1e-9));
+}
 """
 
 HARNESS = """<!doctype html>

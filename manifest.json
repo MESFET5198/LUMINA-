@@ -1,7 +1,7 @@
 {
   "manifestVersion": 1,
   "id": "studio.heightforge.heightmap",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "name": {
     "zh-CN": "HeightForge 高度图",
     "en-US": "HeightForge Height Map"
