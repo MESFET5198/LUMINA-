@@ -1,0 +1,4 @@
+# 发布包的字节必须可复现：仓库内禁止任何换行/BOM 转换
+* -text
+*.png binary
+*.workshop binary

@@ -1,0 +1,34 @@
+{
+  "manifestVersion": 1,
+  "id": "studio.heightforge.heightmap",
+  "version": "1.0.0",
+  "name": {
+    "zh-CN": "HeightForge 高度图",
+    "en-US": "HeightForge Height Map"
+  },
+  "description": {
+    "zh-CN": "把一张图片转成高度图：可自定义高低映射与输出量程，并把结果 PNG 交给 Lumina 转换为浮雕或拼豆。",
+    "en-US": "Turn an image into a height map with custom high/low mapping, then hand the PNG to Lumina for relief conversion."
+  },
+  "publisher": "HeightForge Studio",
+  "workshopApi": {
+    "min": "1.0.0",
+    "maxExclusive": "2.0.0"
+  },
+  "luminaVersion": {
+    "min": "2.0.0"
+  },
+  "entrypoints": {
+    "ui": "ui/index.html"
+  },
+  "permissions": [
+    {
+      "name": "image.pick",
+      "reason": "由用户选择一张图片，读取其像素用于生成高度图"
+    },
+    {
+      "name": "handoff.image",
+      "reason": "把生成的高度图 PNG 交给 Lumina 的浮雕/拼豆转换器"
+    }
+  ]
+}

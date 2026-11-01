@@ -1,0 +1,790 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HeightForge 高度图</title>
+<style>
+:root{
+  --bg:#1e1f22; --panel:#25272b; --panel2:#2b2e33; --line:#3a3d43;
+  --text:#e6e8ea; --muted:#9aa0a6; --accent:#4ea1ff; --warn:#e5a54b;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0; background:var(--bg); color:var(--text);
+  font:13px/1.5 "Microsoft YaHei UI","Segoe UI",system-ui,sans-serif;
+  display:flex; flex-direction:column; overflow:hidden;
+}
+header{
+  display:flex; align-items:center; gap:10px; padding:8px 12px;
+  border-bottom:1px solid var(--line); background:var(--panel);
+}
+header h1{font-size:14px; margin:0; font-weight:600}
+.badge{
+  font-size:11px; color:var(--muted); border:1px solid var(--line);
+  border-radius:999px; padding:1px 8px;
+}
+.badge.ok{color:#7fd18b; border-color:#33543a}
+.badge.warn{color:var(--warn); border-color:#5a4a2a}
+.spacer{flex:1}
+main{display:flex; flex:1; min-height:0}
+#stage{
+  flex:1; min-width:0; display:flex; gap:10px; padding:10px;
+  background:#16171a;
+}
+.pane{
+  flex:1; min-width:0; position:relative; display:flex; align-items:center;
+  justify-content:center; background:#0f1012; border:1px solid var(--line);
+  border-radius:8px; overflow:hidden;
+}
+.pane canvas{max-width:100%; max-height:100%; image-rendering:pixelated}
+.pane .tag{
+  position:absolute; left:8px; top:8px; font-size:11px; color:var(--muted);
+  background:#0009; border:1px solid var(--line); border-radius:6px;
+  padding:1px 7px; pointer-events:none;
+}
+.pane .empty{color:var(--muted); font-size:12px; text-align:center; padding:20px}
+aside{
+  width:360px; flex:none; border-left:1px solid var(--line);
+  background:var(--panel); overflow-y:auto; padding:10px;
+}
+fieldset{
+  border:1px solid var(--line); border-radius:8px; margin:0 0 10px;
+  padding:8px 10px 10px; background:var(--panel2);
+}
+legend{font-size:11px; color:var(--muted); padding:0 4px}
+.row{display:flex; align-items:center; gap:8px; margin:6px 0}
+.row[hidden]{display:none} /* 类选择器的 display:flex 会盖掉 hidden 属性，这里补回来 */
+.row label{flex:none; width:88px; color:var(--muted); font-size:12px}
+.row .val{
+  width:52px; text-align:right; font-variant-numeric:tabular-nums;
+  color:var(--text); font-size:12px;
+}
+input[type=range]{flex:1; min-width:0; accent-color:var(--accent)}
+select,input[type=number],input[type=color]{
+  background:#1a1c1f; color:var(--text); border:1px solid var(--line);
+  border-radius:6px; padding:3px 6px; font:inherit;
+}
+select{flex:1}
+input[type=color]{width:46px; height:26px; padding:0}
+button{
+  background:#31343a; color:var(--text); border:1px solid var(--line);
+  border-radius:6px; padding:5px 10px; font:inherit; cursor:pointer;
+}
+button:hover{border-color:#4d5158}
+button.primary{background:var(--accent); border-color:var(--accent); color:#08131f; font-weight:600}
+button.primary:disabled{opacity:.45; cursor:not-allowed}
+.presets{display:flex; flex-wrap:wrap; gap:6px}
+.presets button{padding:3px 8px; font-size:12px}
+footer{
+  display:flex; align-items:center; gap:10px; padding:8px 12px;
+  border-top:1px solid var(--line); background:var(--panel); font-size:12px;
+  color:var(--muted);
+}
+footer .mono{font-variant-numeric:tabular-nums}
+.hint{color:var(--muted); font-size:11px; line-height:1.45; margin:6px 0 0}
+</style>
+</head>
+<body>
+<!-- 主体：左侧并排预览（原图 / 高度图），右侧参数面板 -->
+<header>
+  <h1>HeightForge 高度图</h1>
+  <span class="badge" id="hostBadge">独立模式</span>
+  <span class="spacer"></span>
+  <button id="btnPick">载入图片</button>
+  <button id="btnDemo">示例</button>
+  <button id="btnHandoff" class="primary" disabled>交给 Lumina</button>
+</header>
+
+<main>
+  <section id="stage">
+    <div class="pane">
+      <span class="tag" id="tagSrc">原图</span>
+      <div class="empty" id="emptySrc">尚未载入图片<br>点右上角「载入图片」</div>
+      <canvas id="cvSrc" hidden></canvas>
+    </div>
+    <div class="pane">
+      <span class="tag" id="tagDst">高度图</span>
+      <div class="empty" id="emptyDst">白 = 最高点，黑 = 最低点</div>
+      <canvas id="cvDst" hidden></canvas>
+    </div>
+  </section>
+
+  <aside>
+    <fieldset>
+      <legend>① 高度来源（像素的哪一部分算高）</legend>
+      <div class="row">
+        <label>来源</label>
+        <select id="selSource">
+          <option value="luma">亮度（Rec.709）</option>
+          <option value="average">RGB 平均</option>
+          <option value="max">最大通道</option>
+          <option value="red">红通道</option>
+          <option value="green">绿通道</option>
+          <option value="blue">蓝通道</option>
+          <option value="saturation">饱和度</option>
+          <option value="color">颜色距离（选区 = 最高点）</option>
+        </select>
+      </div>
+      <div class="row" id="rowColor" hidden>
+        <label>目标色</label>
+        <input type="color" id="inColor" value="#c8a06a">
+        <label style="width:auto">容差</label>
+        <input type="range" id="rngTol" min="0.02" max="1" step="0.01" value="0.25">
+        <span class="val" id="valTol">0.25</span>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>② 输入色阶（哪些像素 = 最低 / 最高）</legend>
+      <div class="row">
+        <label>最低点（黑）</label>
+        <input type="range" id="rngInLo" min="0" max="1" step="0.005" value="0">
+        <span class="val" id="valInLo">0%</span>
+      </div>
+      <div class="row">
+        <label>最高点（白）</label>
+        <input type="range" id="rngInHi" min="0" max="1" step="0.005" value="1">
+        <span class="val" id="valInHi">100%</span>
+      </div>
+      <p class="hint">左端以下的像素全部压成最低点，右端以上的全部拉到最高点；越白越高，越黑越低。</p>
+    </fieldset>
+
+    <fieldset>
+      <legend>③ 中间调与细节</legend>
+      <div class="row">
+        <label>Gamma</label>
+        <input type="range" id="rngGamma" min="0.2" max="3" step="0.01" value="1">
+        <span class="val" id="valGamma">1.00</span>
+      </div>
+      <div class="row">
+        <label>对比（S 曲线）</label>
+        <input type="range" id="rngContrast" min="0.4" max="2.5" step="0.01" value="1.2">
+        <span class="val" id="valContrast">1.20</span>
+      </div>
+      <div class="row">
+        <label>平滑（模糊）</label>
+        <input type="range" id="rngBlur" min="0" max="12" step="0.5" value="0.6">
+        <span class="val" id="valBlur">0.6</span>
+      </div>
+      <div class="row">
+        <label>反相</label>
+        <input type="checkbox" id="chkInvert">
+        <span class="hint" style="margin:0">黑 ↔ 白，最高点 ↔ 最低点</span>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>④ 输出量程（最低点 / 最高点落到的高度）</legend>
+      <div class="row">
+        <label>输出下限</label>
+        <input type="range" id="rngOutLo" min="0" max="1" step="0.005" value="0">
+        <span class="val" id="valOutLo">0%</span>
+      </div>
+      <div class="row">
+        <label>输出上限</label>
+        <input type="range" id="rngOutHi" min="0" max="1" step="0.005" value="1">
+        <span class="val" id="valOutHi">100%</span>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>⑤ 预设</legend>
+      <div class="presets" id="presets">
+        <button data-preset="default">默认</button>
+        <button data-preset="badge">硬币徽章</button>
+        <button data-preset="terrain">地形</button>
+        <button data-preset="detail">细节增强</button>
+        <button data-preset="smooth">柔和平滑</button>
+        <button data-preset="reset">全部重置</button>
+      </div>
+    </fieldset>
+  </aside>
+</main>
+
+<footer>
+  <span class="mono" id="statInfo">—</span>
+  <span class="spacer"></span>
+  <span class="mono" id="statRange"></span>
+  <button id="btnDownload" disabled>下载 16 位 PNG</button>
+</footer>
+
+<input type="file" id="fileInput" accept="image/*" hidden>
+
+<!-- ===================== 引擎（纯函数，可被测试页直接复用） ===================== -->
+<script id="engine">
+"use strict";
+(function (global) {
+  const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
+  const smoothstep = (t) => t * t * (3 - 2 * t);
+
+  /** 从 RGBA 像素里抽出「高度来源」标量场，输出 0..1 的 Float32Array。 */
+  function extractSource(rgba, mode, target, tol) {
+    const n = rgba.length >> 2;
+    const out = new Float32Array(n);
+    const tr = target ? target[0] : 1, tg = target ? target[1] : 1, tb = target ? target[2] : 1;
+    const invTol = tol > 1e-6 ? 1 / tol : 0;
+    for (let i = 0, p = 0; i < n; i++, p += 4) {
+      const r = rgba[p] / 255, g = rgba[p + 1] / 255, b = rgba[p + 2] / 255;
+      let v;
+      switch (mode) {
+        case "average": v = (r + g + b) / 3; break;
+        case "max": v = Math.max(r, g, b); break;
+        case "red": v = r; break;
+        case "green": v = g; break;
+        case "blue": v = b; break;
+        case "saturation": {
+          const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+          v = mx <= 1e-6 ? 0 : (mx - mn) / mx;
+          break;
+        }
+        case "color": {
+          const d = Math.sqrt(((r - tr) ** 2 + (g - tg) ** 2 + (b - tb) ** 2) / 3);
+          v = clamp01(1 - d * invTol);
+          break;
+        }
+        default: v = 0.2126 * r + 0.7152 * g + 0.0722 * b; // Rec.709 亮度
+      }
+      out[i] = clamp01(v);
+    }
+    return out;
+  }
+
+  /** 可分离盒式模糊，跑 3 次近似高斯；边界按夹取处理。 */
+  function boxBlurPass(src, w, h, r) {
+    const tmp = new Float32Array(src.length);
+    const dst = new Float32Array(src.length);
+    const win = 2 * r + 1;
+    for (let y = 0; y < h; y++) {
+      const row = y * w;
+      let sum = 0;
+      for (let k = -r; k <= r; k++) sum += src[row + Math.min(w - 1, Math.max(0, k))];
+      for (let x = 0; x < w; x++) {
+        tmp[row + x] = sum / win;
+        const add = src[row + Math.min(w - 1, x + r + 1)];
+        const sub = src[row + Math.max(0, x - r)];
+        sum += add - sub;
+      }
+    }
+    for (let x = 0; x < w; x++) {
+      let sum = 0;
+      for (let k = -r; k <= r; k++) sum += tmp[Math.min(h - 1, Math.max(0, k)) * w + x];
+      for (let y = 0; y < h; y++) {
+        dst[y * w + x] = sum / win;
+        const add = tmp[Math.min(h - 1, y + r + 1) * w + x];
+        const sub = tmp[Math.max(0, y - r) * w + x];
+        sum += add - sub;
+      }
+    }
+    return dst;
+  }
+
+  function blurField(src, w, h, sigma) {
+    if (!(sigma > 0)) return src;
+    const r = Math.max(1, Math.round(sigma * 0.85));
+    let out = src;
+    for (let i = 0; i < 3; i++) out = boxBlurPass(out, w, h, r);
+    return out;
+  }
+
+  /**
+   * 完整管线：模糊 → 输入色阶 → gamma → S 曲线对比 → 反相 → 输出量程。
+   * p = {inLo,inHi,gamma,contrast,blur,invert,outLo,outHi}
+   */
+  function mapField(src, w, h, p) {
+    let s = blurField(src, w, h, p.blur);
+    const lo = p.inLo, hi = p.inHi;
+    const span = hi - lo;
+    const out = new Float32Array(s.length);
+    for (let i = 0; i < s.length; i++) {
+      let v = s[i];
+      // 输入色阶：黑场/白场退化时按阈值二值，避免除零
+      if (Math.abs(span) < 1e-6) v = v >= lo ? 1 : 0;
+      else v = clamp01((v - lo) / span);
+      if (p.gamma !== 1) v = Math.pow(v, p.gamma);
+      if (p.contrast !== 1) v = clamp01(v + (p.contrast - 1) * (smoothstep(v) - v));
+      if (p.invert) v = 1 - v;
+      out[i] = clamp01(p.outLo + v * (p.outHi - p.outLo));
+    }
+    return out;
+  }
+
+  function stats(field) {
+    let mn = 1, mx = 0, sum = 0;
+    for (let i = 0; i < field.length; i++) {
+      const v = field[i];
+      if (v < mn) mn = v;
+      if (v > mx) mx = v;
+      sum += v;
+    }
+    const mean = field.length ? sum / field.length : 0;
+    return { min: mn, max: mx, mean: mean };
+  }
+
+  /** 高度场 → 8 位灰度 RGBA（预览用）。 */
+  function fieldToRGBA(field) {
+    const out = new Uint8ClampedArray(field.length * 4);
+    for (let i = 0, p = 0; i < field.length; i++, p += 4) {
+      const v = (field[i] * 255 + 0.5) | 0;
+      out[p] = out[p + 1] = out[p + 2] = v;
+      out[p + 3] = 255;
+    }
+    return out;
+  }
+
+  // ---------- 16 位灰度 PNG 编码（无依赖；deflate 用 stored 块，不失真） ----------
+  const CRC_TABLE = (() => {
+    const t = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) {
+      let c = n;
+      for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+      t[n] = c >>> 0;
+    }
+    return t;
+  })();
+
+  function crc32(bytes, start, end) {
+    let c = 0xffffffff;
+    for (let i = start; i < end; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xff] ^ (c >>> 8);
+    return (c ^ 0xffffffff) >>> 0;
+  }
+
+  function adler32(bytes) {
+    let a = 1, b = 0;
+    for (let i = 0; i < bytes.length; i++) {
+      a = (a + bytes[i]) % 65521;
+      b = (b + a) % 65521;
+    }
+    return ((b << 16) | a) >>> 0;
+  }
+
+  /** zlib 容器 + 仅 stored 块（不压缩）：结构合法、字节恒等，便于端到端核对。 */
+  function zlibStored(raw) {
+    const maxBlock = 65535;
+    const blocks = Math.max(1, Math.ceil(raw.length / maxBlock));
+    const out = new Uint8Array(2 + blocks * 5 + raw.length + 4);
+    let o = 0;
+    out[o++] = 0x78; out[o++] = 0x01; // CMF/FLG：deflate, 32K, 最快压缩
+    for (let i = 0; i < blocks; i++) {
+      const start = i * maxBlock;
+      const len = Math.min(maxBlock, raw.length - start);
+      out[o++] = i === blocks - 1 ? 1 : 0; // BFINAL
+      out[o++] = len & 0xff; out[o++] = (len >> 8) & 0xff;
+      out[o++] = ~len & 0xff; out[o++] = (~len >> 8) & 0xff;
+      out.set(raw.subarray(start, start + len), o);
+      o += len;
+    }
+    const ad = adler32(raw);
+    out[o++] = (ad >>> 24) & 0xff; out[o++] = (ad >>> 16) & 0xff;
+    out[o++] = (ad >>> 8) & 0xff; out[o++] = ad & 0xff;
+    return out.subarray(0, o);
+  }
+
+  function chunk(type, data) {
+    const out = new Uint8Array(12 + data.length);
+    const view = new DataView(out.buffer);
+    view.setUint32(0, data.length);
+    for (let i = 0; i < 4; i++) out[4 + i] = type.charCodeAt(i);
+    out.set(data, 8);
+    view.setUint32(8 + data.length, crc32(out, 4, 8 + data.length));
+    return out;
+  }
+
+  /** 生成 16 位灰度 PNG（位深 16、颜色类型 0），值域 0..65535。 */
+  function encodePng16(field, w, h) {
+    const stride = 1 + w * 2; // 每行 1 字节滤波类型 + 2 字节/像素
+    const raw = new Uint8Array(stride * h);
+    for (let y = 0; y < h; y++) {
+      const row = y * stride;
+      raw[row] = 0; // filter: none
+      for (let x = 0; x < w; x++) {
+        const v = Math.round(clamp01(field[y * w + x]) * 65535);
+        raw[row + 1 + x * 2] = (v >> 8) & 0xff;
+        raw[row + 2 + x * 2] = v & 0xff;
+      }
+    }
+    const ihdr = new Uint8Array(13);
+    const dv = new DataView(ihdr.buffer);
+    dv.setUint32(0, w); dv.setUint32(4, h);
+    ihdr[8] = 16;  // bit depth
+    ihdr[9] = 0;   // color type: grayscale
+    ihdr[10] = 0;  // compression
+    ihdr[11] = 0;  // filter
+    ihdr[12] = 0;  // interlace
+    const parts = [
+      new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+      chunk("IHDR", ihdr),
+      chunk("IDAT", zlibStored(raw)),
+      chunk("IEND", new Uint8Array(0)),
+    ];
+    const total = parts.reduce((n, p) => n + p.length, 0);
+    const png = new Uint8Array(total);
+    let at = 0;
+    for (const p of parts) { png.set(p, at); at += p.length; }
+    return png;
+  }
+
+  global.HeightForgeEngine = {
+    extractSource, blurField, mapField, stats, fieldToRGBA,
+    encodePng16, smoothstep, clamp01, crc32, adler32,
+  };
+})(window);
+</script>
+
+<!-- ===================== 应用层：交互、预览、宿主桥接 ===================== -->
+<script id="app">
+"use strict";
+(function () {
+  const E = window.HeightForgeEngine;
+  const MODULE_ID = "studio.heightforge.heightmap";
+  const MODULE_VERSION = "1.0.0";
+  const API_VERSION = "1.0.0";
+
+  const $ = (id) => document.getElementById(id);
+  const cvSrc = $("cvSrc"), cvDst = $("cvDst");
+
+  /** 当前参数与图像状态（唯一数据源）。 */
+  const state = {
+    img: null,        // HTMLImageElement / ImageBitmap
+    rgba: null,       // 原图像素（ImageData.data）
+    width: 0, height: 0,
+    field: null,      // 当前高度场
+    dirty: true,
+    params: {
+      source: "luma", target: [0.78, 0.63, 0.42], tol: 0.25,
+      inLo: 0, inHi: 1, gamma: 1, contrast: 1.2, blur: 0.6,
+      invert: false, outLo: 0, outHi: 1,
+    },
+  };
+
+  const PRESETS = {
+    "default": { inLo: 0, inHi: 1, gamma: 1, contrast: 1, blur: 0, invert: false, outLo: 0, outHi: 1 },
+    badge: { inLo: 0.08, inHi: 0.92, gamma: 1, contrast: 1.25, blur: 0.6, invert: false, outLo: 0, outHi: 1 },
+    terrain: { inLo: 0.05, inHi: 0.95, gamma: 0.9, contrast: 1.35, blur: 1.2, invert: false, outLo: 0, outHi: 1 },
+    detail: { inLo: 0, inHi: 1, gamma: 0.85, contrast: 1.8, blur: 0, invert: false, outLo: 0, outHi: 1 },
+    smooth: { inLo: 0.1, inHi: 0.9, gamma: 1.1, contrast: 0.9, blur: 2.5, invert: false, outLo: 0, outHi: 1 },
+  };
+
+  // ---------------- 宿主桥接（创意工坊）----------------
+  // 说明：正式模块应使用 @lumina/workshop-sdk。本模块在无网络环境构建，
+  // 因此按 docs/module-development.md 与 contracts.ts 描述自行实现最小握手：
+  //   parent → module : {type:"lumina.workshop.ready"}
+  //   module → parent : {type:"lumina.workshop.connect", moduleId, moduleVersion,
+  //                      apiVersion} + MessagePort（transfer）
+  //   port 上收发 {id, method, params} / {id, ok, result|error}
+  const bridge = {
+    port: null,
+    nextId: 1,
+    pending: new Map(),
+    hostName: "",
+    onMessage(event) {
+      const data = event.data;
+      if (!data || data.type !== "lumina.workshop.ready") return;
+      if (bridge.port) return;
+      const channel = new MessageChannel();
+      channel.port1.onmessage = (msg) => bridge._handle(msg.data);
+      channel.port1.start();
+      bridge.port = channel.port1;
+      window.parent.postMessage(
+        {
+          type: "lumina.workshop.connect",
+          moduleId: MODULE_ID,
+          moduleVersion: MODULE_VERSION,
+          apiVersion: API_VERSION,
+        },
+        "*",
+        [channel.port2],
+      );
+      setHostBadge(true);
+      bridge.call("lifecycle.ready", {}).catch(() => {});
+    },
+    _handle(msg) {
+      if (!msg || typeof msg !== "object") return;
+      const entry = bridge.pending.get(msg.id);
+      if (!entry) return;
+      bridge.pending.delete(msg.id);
+      if (msg.ok) entry.resolve(msg.result);
+      else entry.reject(Object.assign(new Error((msg.error && msg.error.message) || "RPC 失败"), { code: msg.error && msg.error.code }));
+    },
+    call(method, params) {
+      if (!bridge.port) return Promise.reject(new Error("未连接到 Lumina 宿主"));
+      const id = bridge.nextId++;
+      return new Promise((resolve, reject) => {
+        bridge.pending.set(id, { resolve, reject });
+        bridge.port.postMessage({ id, method, params: params || {} });
+        // 超时兜底：普通请求 30 秒
+        setTimeout(() => {
+          if (bridge.pending.delete(id)) reject(new Error("宿主响应超时"));
+        }, 30000);
+      });
+    },
+    get connected() { return !!bridge.port; },
+  };
+  window.addEventListener("message", (e) => bridge.onMessage(e));
+
+  function setHostBadge(connected) {
+    const el = $("hostBadge");
+    el.textContent = connected ? "已连接 Lumina" : "独立模式";
+    el.className = "badge " + (connected ? "ok" : "warn");
+    $("btnHandoff").disabled = !connected || !state.field;
+  }
+
+  // ---------------- 参数 UI 同步 ----------------
+  const ui = {
+    selSource: $("selSource"), inColor: $("inColor"), rngTol: $("rngTol"),
+    rngInLo: $("rngInLo"), rngInHi: $("rngInHi"),
+    rngGamma: $("rngGamma"), rngContrast: $("rngContrast"), rngBlur: $("rngBlur"),
+    chkInvert: $("chkInvert"),
+    rngOutLo: $("rngOutLo"), rngOutHi: $("rngOutHi"),
+  };
+
+  function hexToRgb(hex) {
+    const n = parseInt(hex.slice(1), 16);
+    return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
+  }
+  function rgbToHex(rgb) {
+    const h = (v) => Math.round(v * 255).toString(16).padStart(2, "0");
+    return "#" + h(rgb[0]) + h(rgb[1]) + h(rgb[2]);
+  }
+
+  function readUI() {
+    const p = state.params;
+    p.source = ui.selSource.value;
+    p.target = hexToRgb(ui.inColor.value);
+    p.tol = +ui.rngTol.value;
+    p.inLo = +ui.rngInLo.value;
+    p.inHi = +ui.rngInHi.value;
+    p.gamma = +ui.rngGamma.value;
+    p.contrast = +ui.rngContrast.value;
+    p.blur = +ui.rngBlur.value;
+    p.invert = ui.chkInvert.checked;
+    p.outLo = +ui.rngOutLo.value;
+    p.outHi = +ui.rngOutHi.value;
+    $("rowColor").hidden = p.source !== "color";
+  }
+
+  function writeUI() {
+    const p = state.params;
+    ui.selSource.value = p.source;
+    ui.inColor.value = rgbToHex(p.target);
+    ui.rngTol.value = p.tol;
+    ui.rngInLo.value = p.inLo; ui.rngInHi.value = p.inHi;
+    ui.rngGamma.value = p.gamma; ui.rngContrast.value = p.contrast; ui.rngBlur.value = p.blur;
+    ui.chkInvert.checked = p.invert;
+    ui.rngOutLo.value = p.outLo; ui.rngOutHi.value = p.outHi;
+    $("rowColor").hidden = p.source !== "color";
+    refreshValueLabels();
+  }
+
+  function refreshValueLabels() {
+    const p = state.params;
+    $("valTol").textContent = p.tol.toFixed(2);
+    $("valInLo").textContent = (p.inLo * 100).toFixed(0) + "%";
+    $("valInHi").textContent = (p.inHi * 100).toFixed(0) + "%";
+    $("valGamma").textContent = p.gamma.toFixed(2);
+    $("valContrast").textContent = p.contrast.toFixed(2);
+    $("valBlur").textContent = p.blur.toFixed(1);
+    $("valOutLo").textContent = (p.outLo * 100).toFixed(0) + "%";
+    $("valOutHi").textContent = (p.outHi * 100).toFixed(0) + "%";
+  }
+
+  for (const el of Object.values(ui)) {
+    el.addEventListener("input", () => { readUI(); refreshValueLabels(); schedule(); });
+    el.addEventListener("change", () => { readUI(); refreshValueLabels(); schedule(); });
+  }
+
+  document.querySelectorAll("#presets button").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const name = btn.dataset.preset;
+      if (name === "reset") {
+        state.params = {
+          source: "luma", target: [0.78, 0.63, 0.42], tol: 0.25,
+          inLo: 0, inHi: 1, gamma: 1, contrast: 1.2, blur: 0.6,
+          invert: false, outLo: 0, outHi: 1,
+        };
+      } else {
+        Object.assign(state.params, PRESETS[name]);
+      }
+      writeUI();
+      schedule();
+    });
+  });
+
+  // ---------------- 渲染 ----------------
+  let rafPending = false;
+  function schedule() {
+    state.dirty = true;
+    if (rafPending) return;
+    rafPending = true;
+    requestAnimationFrame(() => {
+      rafPending = false;
+      if (state.dirty) render();
+    });
+  }
+
+  function render() {
+    state.dirty = false;
+    if (!state.rgba) return;
+    const t0 = performance.now();
+    const { width: w, height: h, params: p } = state;
+    const src = E.extractSource(state.rgba, p.source, p.target, p.tol);
+    const field = E.mapField(src, w, h, p);
+    state.field = field;
+
+    // 高度图绘制：直接写 ImageData，避免额外缩放误差
+    cvDst.width = w; cvDst.height = h;
+    const ctx = cvDst.getContext("2d");
+    ctx.putImageData(new ImageData(E.fieldToRGBA(field), w, h), 0, 0);
+
+    const s = E.stats(field);
+    $("statInfo").textContent =
+      `${w}×${h} · ${(performance.now() - t0).toFixed(0)} ms`;
+    $("statRange").textContent =
+      `min ${s.min.toFixed(3)} · max ${s.max.toFixed(3)} · mean ${s.mean.toFixed(3)}`;
+    $("btnHandoff").disabled = !bridge.connected;
+    $("btnDownload").disabled = false;
+  }
+
+  // ---------------- 载入图片 ----------------
+  function showImage(img, w, h) {
+    state.img = img; state.width = w; state.height = h;
+    const tmp = document.createElement("canvas");
+    tmp.width = w; tmp.height = h;
+    const ctx = tmp.getContext("2d");
+    ctx.drawImage(img, 0, 0, w, h);
+    state.rgba = ctx.getImageData(0, 0, w, h).data;
+
+    cvSrc.width = w; cvSrc.height = h;
+    cvSrc.getContext("2d").drawImage(img, 0, 0, w, h);
+    cvSrc.hidden = false; $("emptySrc").hidden = true;
+    cvDst.hidden = false; $("emptyDst").hidden = true;
+    $("tagSrc").textContent = `原图 · ${w}×${h}`;
+    $("tagDst").textContent = "高度图 · 白=高 黑=低";
+    schedule();
+  }
+
+  function loadBlob(blob) {
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => {
+      // 超大图先降采样，避免浏览器内存与像素上限问题
+      const MAX_SIDE = 2048;
+      const scale = Math.min(1, MAX_SIDE / Math.max(img.naturalWidth, img.naturalHeight));
+      showImage(img, Math.max(1, Math.round(img.naturalWidth * scale)),
+        Math.max(1, Math.round(img.naturalHeight * scale)));
+      URL.revokeObjectURL(url);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      $("emptySrc").textContent = "这张图片无法解码（格式不支持或文件损坏）";
+    };
+    img.src = url;
+  }
+
+  $("btnPick").addEventListener("click", async () => {
+    if (bridge.connected) {
+      try {
+        const res = await bridge.call("image.pick", { accept: "image/*" });
+        const bytes = res && (res.pngBytes || res.bytes || res.imageBytes);
+        if (bytes) { loadBlob(new Blob([bytes], { type: "image/png" })); return; }
+      } catch (err) {
+        // 宿主拒绝或超时 → 退回本地文件选择（仅开发/浏览器调试）
+      }
+    }
+    $("fileInput").click();
+  });
+
+  $("fileInput").addEventListener("change", (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (file) loadBlob(file);
+    e.target.value = "";
+  });
+
+  // ---------------- 导出 ----------------
+  $("btnDownload").addEventListener("click", () => {
+    if (!state.field) return;
+    const png = E.encodePng16(state.field, state.width, state.height);
+    const url = URL.createObjectURL(new Blob([png], { type: "image/png" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "heightmap-16bit.png";
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+  });
+
+  $("btnHandoff").addEventListener("click", async () => {
+    if (!state.field || !bridge.connected) return;
+    const png8 = toPng8(state.field, state.width, state.height);
+    try {
+      await bridge.call("handoff.image", {
+        moduleId: MODULE_ID,
+        moduleVersion: MODULE_VERSION,
+        pngBytes: png8,
+        pixelWidth: state.width,
+        pixelHeight: state.height,
+        recommendedWidthMm: 100,
+        recommendedHeightMm: 100 * (state.height / state.width),
+        preserveCanvasBounds: true,
+      });
+      $("hostBadge").textContent = "已交给 Lumina";
+    } catch (err) {
+      $("hostBadge").textContent = "交接失败：" + (err.message || "未知错误");
+    }
+  });
+
+  /** 交给宿主用标准 8 位 PNG（宿主只接受标准 PNG）。 */
+  function toPng8(field, w, h) {
+    const canvas = document.createElement("canvas");
+    canvas.width = w; canvas.height = h;
+    canvas.getContext("2d").putImageData(new ImageData(E.fieldToRGBA(field), w, h), 0, 0);
+    return canvas.toDataURL("image/png");
+  }
+
+  // ---------------- 示例图（本地合成，不读任何外部资源） ----------------
+  function demoImage() {
+    const w = 720, h = 540;
+    const c = document.createElement("canvas");
+    c.width = w; c.height = h;
+    const g = c.getContext("2d");
+    const bg = g.createLinearGradient(0, 0, 0, h);
+    bg.addColorStop(0, "#3a2f22");
+    bg.addColorStop(1, "#17120d");
+    g.fillStyle = bg;
+    g.fillRect(0, 0, w, h);
+    const cx = w / 2, cy = h / 2, r = 190;
+    const coin = g.createRadialGradient(cx - 70, cy - 80, 20, cx, cy, r);
+    coin.addColorStop(0, "#f0cf94");
+    coin.addColorStop(0.55, "#c79a58");
+    coin.addColorStop(1, "#7d5a2c");
+    g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.fillStyle = coin; g.fill();
+    g.lineWidth = 10; g.strokeStyle = "#e8c78d";
+    for (const rr of [r - 16, r - 46, r - 92]) {
+      g.beginPath(); g.arc(cx, cy, rr, 0, Math.PI * 2); g.stroke();
+    }
+    g.fillStyle = "#2a1f13";
+    g.font = "bold 54px 'Microsoft YaHei UI', sans-serif";
+    g.textAlign = "center"; g.textBaseline = "middle";
+    g.fillText("HEIGHT", cx, cy - 18);
+    g.font = "22px 'Microsoft YaHei UI', sans-serif";
+    g.fillText("MAP · FORGE", cx, cy + 42);
+    return c;
+  }
+
+  $("btnDemo").addEventListener("click", () => {
+    const c = demoImage();
+    showImage(c, c.width, c.height);
+  });
+  // 调试/截图用：index.html?demo=1 直接加载示例
+  if (/[?&]demo=1/.test(location.search)) {
+    setTimeout(() => $("btnDemo").click(), 0);
+  }
+
+  // 初始化
+  readUI();
+  refreshValueLabels();
+  setHostBadge(false);
+})();
+</script>
+</body>
+</html>
