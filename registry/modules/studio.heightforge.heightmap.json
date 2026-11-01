@@ -6,12 +6,12 @@
   "publisher": "HeightForge Studio",
   "versions": [
     {
-      "version": "1.1.2",
-      "releaseTag": "v1.1.2",
-      "assetName": "studio.heightforge.heightmap-1.1.2.lumina-workshop",
-      "assetBytes": 191599,
-      "sha256": "1394137285b84c9ee202cddb315838066bdc3b6ae35d73b48ece1648e5ae6762",
-      "manifestSha256": "d2f9b6cd7b0cbbcfee6830c70563b58f695f0cd9d5673b3086a8a5174f4338d6",
+      "version": "1.2.0",
+      "releaseTag": "v1.2.0",
+      "assetName": "studio.heightforge.heightmap-1.2.0.lumina-workshop",
+      "assetBytes": 194969,
+      "sha256": "a516432f66661a8f7b0d70277045450a548c09fe7e2241eb8f2fee0b77bc48a9",
+      "manifestSha256": "eaa48d3be7661d4cc128f2136e544685e91dcd33d844286444d72ebc9a6d3545",
       "workshopApi": {
         "min": "1.0.0",
         "maxExclusive": "2.0.0"

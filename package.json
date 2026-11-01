@@ -1,0 +1,20 @@
+{
+  "name": "heightforge-workshop",
+  "version": "1.2.0",
+  "private": true,
+  "type": "module",
+  "description": "HeightForge 高度图 —— Lumina Studio 创意工坊模块（图片转高度图）",
+  "license": "MIT",
+  "packageManager": "pnpm@11.28.5",
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@lumina/workshop-sdk": "https://github.com/lumina-layer-studio/Lumina-Workshop-SDK/releases/download/v1.0.2/lumina-workshop-sdk-1.0.2.tgz"
+  },
+  "scripts": {
+    "bundle": "node tools/bundle_sdk.mjs",
+    "test": "python tools/run_js_tests.py",
+    "build": "node tools/bundle_sdk.mjs && python tools/build_package.py"
+  }
+}

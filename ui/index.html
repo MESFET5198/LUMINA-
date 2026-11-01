@@ -274,6 +274,371 @@ body[data-view="src"] #stage,body[data-view="dst"] #stage{grid-template-columns:
 <input type="file" id="fileInput" accept="image/*" hidden>
 
 <!-- ===================== 引擎（纯函数，可被测试页直接复用） ===================== -->
+<script id="lumina-sdk">
+/* @lumina/workshop-sdk 1.0.2 —— 由 tools/bundle_sdk.mjs 内联，请勿手改（改 package.json 后重跑 pnpm bundle） */
+(function () {
+"use strict";
+const WORKSHOP_API_VERSION = "1.0.0";
+const WORKSHOP_MANIFEST_VERSION = 1;
+const WORKSHOP_RPC_VERSION = 1;
+const WORKSHOP_RPC_EVENT_NAMES = ["ui.stateChanged"];
+const WORKSHOP_PERMISSION_NAMES = [
+    "image.pick",
+    "project.storage",
+    "color-library.read",
+    "handoff.image",
+];
+function createRequestEnvelope(requestId, method, payload) {
+    return {
+        protocol: "lumina-workshop-rpc",
+        version: WORKSHOP_RPC_VERSION,
+        kind: "request",
+        requestId,
+        method,
+        payload,
+    };
+}
+// <<< contracts.js
+
+function applyWorkshopUiState(state, root = document.documentElement) {
+    root.lang = state.locale;
+    root.dataset.theme = state.theme;
+    for (const [name, value] of Object.entries(state.tokens)) {
+        if (/^--lumina-[a-z0-9-]+$/.test(name)) {
+            root.style.setProperty(name, value);
+        }
+    }
+}
+// <<< theme.js
+
+const DEFAULT_HANDSHAKE_TIMEOUT_MS = 10_000;
+const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+const IMAGE_PICK_REQUEST_TIMEOUT_MS = 300_000;
+const HANDOFF_REQUEST_TIMEOUT_MS = 120_000;
+const MAX_LOCALLY_TIMED_OUT_REQUEST_IDS = 256;
+class WorkshopClientError extends Error {
+    code;
+    retryable;
+    constructor(code, message, retryable = false) {
+        super(message);
+        this.name = "WorkshopClientError";
+        this.code = code;
+        this.retryable = retryable;
+    }
+}
+function isRecord(value) {
+    return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function parseResponse(value) {
+    if (!isRecord(value)) {
+        return null;
+    }
+    if (value.protocol !== "lumina-workshop-rpc" ||
+        value.version !== WORKSHOP_RPC_VERSION ||
+        value.kind !== "response" ||
+        typeof value.requestId !== "string" ||
+        value.requestId.length === 0 ||
+        typeof value.ok !== "boolean") {
+        return null;
+    }
+    if (value.ok) {
+        return value;
+    }
+    if (!isRecord(value.error) ||
+        typeof value.error.code !== "string" ||
+        typeof value.error.message !== "string" ||
+        typeof value.error.retryable !== "boolean") {
+        return null;
+    }
+    return value;
+}
+function parseUiState(value) {
+    if (!isRecord(value) ||
+        (value.locale !== "zh-CN" && value.locale !== "en-US") ||
+        (value.theme !== "light" && value.theme !== "dark") ||
+        !isRecord(value.tokens) ||
+        Object.values(value.tokens).some((token) => typeof token !== "string")) {
+        return null;
+    }
+    return value;
+}
+function parseEvent(value) {
+    if (!isRecord(value) ||
+        value.protocol !== "lumina-workshop-rpc" ||
+        value.version !== WORKSHOP_RPC_VERSION ||
+        value.kind !== "event" ||
+        value.event !== "ui.stateChanged") {
+        return null;
+    }
+    const state = parseUiState(value.payload);
+    if (state === null) {
+        return null;
+    }
+    return { ...value, payload: state };
+}
+class PortWorkshopClient {
+    sessionId;
+    image;
+    projects;
+    colorLibrary;
+    handoff;
+    ui;
+    status;
+    lifecycle;
+    port;
+    pending = new Map();
+    locallyTimedOutRequestIds = new Set();
+    uiStateListeners = new Set();
+    latestUiState = null;
+    uiStateEventSequence = 0;
+    requestSequence = 0;
+    closed = false;
+    constructor(sessionId, port) {
+        this.sessionId = sessionId;
+        this.port = port;
+        this.port.onmessage = (event) => this.handleMessage(event.data);
+        this.port.onmessageerror = () => {
+            this.failProtocol(new WorkshopClientError("MALFORMED_RESPONSE", "The Workshop host sent an unreadable response."));
+        };
+        this.port.start();
+        this.image = {
+            pick: () => this.request("image.pick", {}, [], IMAGE_PICK_REQUEST_TIMEOUT_MS),
+        };
+        this.projects = {
+            save: (record) => this.request("project.save", { record }),
+            load: (projectId) => this.request("project.load", {
+                projectId,
+            }),
+            latest: () => this.request("project.latest", {}),
+            remove: (projectId) => this.request("project.remove", { projectId }),
+        };
+        this.colorLibrary = {
+            read: () => this.request("colorLibrary.read", {}),
+        };
+        this.handoff = {
+            image: (value) => this.request("handoff.image", value, value.svgBytes instanceof ArrayBuffer &&
+                value.svgBytes !== value.pngBytes
+                ? [value.pngBytes, value.svgBytes]
+                : [value.pngBytes], HANDOFF_REQUEST_TIMEOUT_MS),
+        };
+        this.ui = {
+            getState: async () => {
+                if (this.closed) {
+                    throw new WorkshopClientError("CLIENT_CLOSED", "The Workshop connection has been closed.");
+                }
+                if (this.latestUiState !== null) {
+                    return this.latestUiState;
+                }
+                const eventSequenceAtRequest = this.uiStateEventSequence;
+                const state = await this.request("ui.getState", {});
+                if (this.uiStateEventSequence !== eventSequenceAtRequest &&
+                    this.latestUiState !== null) {
+                    return this.latestUiState;
+                }
+                return state;
+            },
+            subscribeState: (listener) => {
+                if (this.closed) {
+                    return () => { };
+                }
+                this.uiStateListeners.add(listener);
+                if (this.latestUiState !== null) {
+                    this.notifyUiStateListener(listener, this.latestUiState);
+                }
+                return () => {
+                    this.uiStateListeners.delete(listener);
+                };
+            },
+        };
+        this.status = {
+            progress: (value) => this.request("status.progress", value),
+            error: (value) => this.request("status.error", value),
+            diagnostics: (value) => this.request("status.diagnostics", value),
+        };
+        this.lifecycle = {
+            ready: () => this.request("lifecycle.ready", {}),
+        };
+    }
+    close() {
+        if (this.closed) {
+            return;
+        }
+        this.closed = true;
+        this.port.onmessage = null;
+        this.port.onmessageerror = null;
+        this.port.close();
+        this.uiStateListeners.clear();
+        this.rejectAll(new WorkshopClientError("CLIENT_CLOSED", "The Workshop connection has been closed."));
+    }
+    request(method, payload, transfer = [], timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS) {
+        if (this.closed) {
+            return Promise.reject(new WorkshopClientError("CLIENT_CLOSED", "The Workshop connection has been closed."));
+        }
+        this.requestSequence += 1;
+        const requestId = `req-${this.requestSequence}`;
+        const envelope = createRequestEnvelope(requestId, method, payload);
+        return new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => {
+                this.pending.delete(requestId);
+                this.rememberTimedOutRequestId(requestId);
+                reject(new WorkshopClientError("REQUEST_TIMEOUT", `Workshop request ${method} timed out.`, true));
+            }, timeoutMs);
+            this.pending.set(requestId, {
+                resolve: (value) => resolve(value),
+                reject,
+                timeout,
+            });
+            try {
+                this.port.postMessage(envelope, transfer);
+            }
+            catch (error) {
+                clearTimeout(timeout);
+                this.pending.delete(requestId);
+                reject(new WorkshopClientError("REQUEST_SEND_FAILED", error instanceof Error
+                    ? error.message
+                    : `Workshop request ${method} could not be sent.`, true));
+            }
+        });
+    }
+    handleMessage(value) {
+        const event = parseEvent(value);
+        if (event !== null) {
+            this.publishUiState(event.payload);
+            return;
+        }
+        if (isRecord(value) && value.kind === "event") {
+            return;
+        }
+        const response = parseResponse(value);
+        if (response === null) {
+            this.failProtocol(new WorkshopClientError("MALFORMED_RESPONSE", "The Workshop host sent a malformed response."));
+            return;
+        }
+        const pending = this.pending.get(response.requestId);
+        if (pending === undefined) {
+            if (this.locallyTimedOutRequestIds.delete(response.requestId)) {
+                return;
+            }
+            this.failProtocol(new WorkshopClientError("DUPLICATE_RESPONSE", "The Workshop host sent a duplicate or unknown response."));
+            return;
+        }
+        clearTimeout(pending.timeout);
+        this.pending.delete(response.requestId);
+        if (response.ok) {
+            pending.resolve(response.result);
+            return;
+        }
+        const error = response.error;
+        pending.reject(new WorkshopClientError(error?.code ?? "HOST_REQUEST_FAILED", error?.message ?? "The Workshop host rejected the request.", error?.retryable ?? false));
+    }
+    publishUiState(state) {
+        this.latestUiState = state;
+        this.uiStateEventSequence += 1;
+        for (const listener of [...this.uiStateListeners]) {
+            this.notifyUiStateListener(listener, state);
+        }
+    }
+    notifyUiStateListener(listener, state) {
+        try {
+            listener(state);
+        }
+        catch {
+            // A module listener must not interrupt other listeners or the RPC link.
+        }
+    }
+    failProtocol(error) {
+        if (this.closed) {
+            return;
+        }
+        this.closed = true;
+        this.port.onmessage = null;
+        this.port.onmessageerror = null;
+        this.port.close();
+        this.uiStateListeners.clear();
+        this.latestUiState = null;
+        this.rejectAll(error);
+    }
+    rejectAll(error) {
+        for (const pending of this.pending.values()) {
+            clearTimeout(pending.timeout);
+            pending.reject(error);
+        }
+        this.pending.clear();
+        this.locallyTimedOutRequestIds.clear();
+    }
+    rememberTimedOutRequestId(requestId) {
+        this.locallyTimedOutRequestIds.add(requestId);
+        if (this.locallyTimedOutRequestIds.size <=
+            MAX_LOCALLY_TIMED_OUT_REQUEST_IDS) {
+            return;
+        }
+        const oldestRequestId = this.locallyTimedOutRequestIds
+            .values()
+            .next().value;
+        if (oldestRequestId !== undefined) {
+            this.locallyTimedOutRequestIds.delete(oldestRequestId);
+        }
+    }
+}
+async function connectWorkshop(options) {
+    const windowObject = options.windowObject ??
+        window;
+    const handshakeTimeoutMs = options.handshakeTimeoutMs ?? DEFAULT_HANDSHAKE_TIMEOUT_MS;
+    return new Promise((resolve, reject) => {
+        let settled = false;
+        const finishWithError = (error) => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            clearTimeout(timeout);
+            windowObject.removeEventListener("message", onMessage);
+            reject(error);
+        };
+        const onMessage = (event) => {
+            if (event.source !== windowObject.parent) {
+                return;
+            }
+            if (!isRecord(event.data) || event.data.type !== "lumina.workshop.connect") {
+                return;
+            }
+            if (typeof event.data.sessionId !== "string" ||
+                event.data.sessionId.length === 0 ||
+                event.ports.length !== 1) {
+                finishWithError(new WorkshopClientError("HANDSHAKE_INVALID", "The Workshop host supplied an invalid connection."));
+                return;
+            }
+            settled = true;
+            clearTimeout(timeout);
+            windowObject.removeEventListener("message", onMessage);
+            resolve(new PortWorkshopClient(event.data.sessionId, event.ports[0]));
+        };
+        const timeout = setTimeout(() => {
+            finishWithError(new WorkshopClientError("HANDSHAKE_TIMEOUT", "The Workshop host did not connect within 10 seconds.", true));
+        }, handshakeTimeoutMs);
+        windowObject.addEventListener("message", onMessage);
+        try {
+            const readyMessage = {
+                type: "lumina.workshop.ready",
+                moduleId: options.moduleId,
+                moduleVersion: options.moduleVersion,
+                apiVersion: WORKSHOP_API_VERSION,
+                events: [...WORKSHOP_RPC_EVENT_NAMES],
+            };
+            windowObject.parent.postMessage(readyMessage, "*");
+        }
+        catch (error) {
+            finishWithError(new WorkshopClientError("HANDSHAKE_SEND_FAILED", error instanceof Error
+                ? error.message
+                : "The Workshop ready message could not be sent.", true));
+        }
+    });
+}
+// <<< client.js
+
+  window.LuminaWorkshop = { connectWorkshop, WorkshopClientError, WORKSHOP_API_VERSION, WORKSHOP_MANIFEST_VERSION, WORKSHOP_RPC_VERSION, WORKSHOP_PERMISSION_NAMES, applyWorkshopUiState, createRequestEnvelope };
+})();
+</script>
 <script id="engine">
 "use strict";
 (function (global) {
@@ -743,7 +1108,7 @@ body[data-view="src"] #stage,body[data-view="dst"] #stage{grid-template-columns:
 (function () {
   const E = window.HeightForgeEngine;
   const MODULE_ID = "studio.heightforge.heightmap";
-  const MODULE_VERSION = "1.1.2";
+  const MODULE_VERSION = "1.2.0";
   const API_VERSION = "1.0.0";
 
   const $ = (id) => document.getElementById(id);
@@ -771,75 +1136,41 @@ body[data-view="src"] #stage,body[data-view="dst"] #stage{grid-template-columns:
     smooth: { inLo: 0.1, inHi: 0.9, gamma: 1.1, contrast: 0.9, blur: 2.5, invert: false, outLo: 0, outHi: 1 },
   };
 
-  // ---------------- 宿主桥接（创意工坊）----------------
-  // 正式模块用 @lumina/workshop-sdk；本模块离线构建，按宿主真实协议自实现，握手是「模块先说话」：
-  //   1) module → parent: {type:"lumina.workshop.ready", moduleId, moduleVersion, apiVersion, events}
-  //   2) parent → module: {type:"lumina.workshop.connect", sessionId} + MessagePort（transfer）
-  //   3) port 上收发 {protocol:"lumina-workshop-rpc", version:1, kind:"request"|"response"|"event"}
-  const bridge = {
-    port: null,
-    nextId: 1,
-    pending: new Map(),
-    timer: 0,
-    /** 宿主可能比脚本晚挂监听，反复广播 ready 直到连接成功。 */
-    announce(count = 0) {
-      if (bridge.port) return;
-      window.parent.postMessage(
-        {
-          type: "lumina.workshop.ready",
-          moduleId: MODULE_ID,
-          moduleVersion: MODULE_VERSION,
-          apiVersion: API_VERSION,
-          events: [],
-        },
-        "*",
-      );
-      if (count < 20) bridge.timer = setTimeout(() => bridge.announce(count + 1), 500);
-    },
-    accept(event) {
-      const data = event.data;
-      if (!data || data.type !== "lumina.workshop.connect" || bridge.port) return;
-      const port = event.ports && event.ports[0];
-      if (!port) return;
-      bridge.port = port;
-      port.onmessage = (msg) => bridge._handle(msg.data);
-      if (port.start) port.start();
-      clearTimeout(bridge.timer);
-      setHostBadge(true);
-      bridge.call("lifecycle.ready", {}).catch(() => {});
-    },
-    _handle(msg) {
-      if (!msg || msg.protocol !== "lumina-workshop-rpc" || msg.kind !== "response") return;
-      const entry = bridge.pending.get(msg.requestId);
-      if (!entry) return;
-      bridge.pending.delete(msg.requestId);
-      if (msg.ok) entry.resolve(msg.result);
-      else entry.reject(Object.assign(new Error((msg.error && msg.error.message) || "RPC 失败"), { code: msg.error && msg.error.code }));
-    },
-    call(method, payload, timeoutMs = 30000) {
-      if (!bridge.port) return Promise.reject(new Error("未连接到 Lumina 宿主"));
-      const requestId = "hf" + bridge.nextId++ + "-" + Math.random().toString(36).slice(2, 8);
-      return new Promise((resolve, reject) => {
-        bridge.pending.set(requestId, { resolve, reject });
-        bridge.port.postMessage({
-          protocol: "lumina-workshop-rpc",
-          version: 1,
-          kind: "request",
-          requestId,
-          method,
-          payload: payload || {},
-        });
-        setTimeout(() => {
-          if (bridge.pending.delete(requestId)) reject(new Error("宿主响应超时"));
-        }, timeoutMs);
+  // ---------------- 宿主桥接（官方 @lumina/workshop-sdk 1.0.2）----------------
+  // SDK 由 pnpm 从不可变的 GitHub Release URL 安装（见 package.json / pnpm-lock.yaml），
+  // 构建时由 tools/bundle_sdk.mjs 内联成 window.LuminaWorkshop：握手、RPC 封装、超时与帧校验都在 SDK 里。
+  // 这里只负责「什么时候连接、失败怎么重试、把结果映射成界面状态」。
+  const host = { client: null, connected: false, connecting: false };
+
+  async function connectHost(attempt = 1) {
+    if (host.connected || host.connecting || window.parent === window) return;
+    const sdk = window.LuminaWorkshop;
+    if (!sdk || !sdk.connectWorkshop) return;
+    host.connecting = true;
+    try {
+      const client = await sdk.connectWorkshop({
+        moduleId: MODULE_ID,
+        moduleVersion: MODULE_VERSION,
       });
-    },
-    get connected() { return !!bridge.port; },
-  };
-  window.addEventListener("message", (e) => bridge.accept(e));
-  if (window.parent !== window) bridge.announce();
+      host.client = client;
+      host.connected = true;
+      setHostBadge(true);
+      try { await client.lifecycle.ready(); } catch (err) { /* 旧宿主可能不实现 */ }
+      try {
+        client.ui.subscribeState((st) => { try { sdk.applyWorkshopUiState(st); } catch (err) {} });
+      } catch (err) { /* 可选能力 */ }
+    } catch (err) {
+      // 宿主可能比模块晚挂监听，按 SDK 的 handshakeTimeout 退避重试
+      if (attempt < 6) setTimeout(() => connectHost(attempt + 1), 900);
+      else console.warn("[workshop] 连接失败:", err && err.code, err && err.message);
+    } finally {
+      host.connecting = false;
+    }
+  }
+  if (window.parent !== window) connectHost();
 
   function setHostBadge(connected) {
+    host.connected = connected;
     const el = $("hostBadge");
     el.textContent = connected ? "已连接 Lumina" : "独立模式";
     el.className = "badge " + (connected ? "ok" : "warn");
@@ -1386,7 +1717,7 @@ body[data-view="src"] #stage,body[data-view="dst"] #stage{grid-template-columns:
     $("tagSrc").textContent = "原图 · " + w + "×" + h;
     $("tagDst").textContent = "高度图 · 白 = 高 黑 = 低";
     ui.imgInfo.textContent = `${w}×${h} · ${(w * h / 1e6).toFixed(2)} MP`;
-    ui.btnHandoff.disabled = !bridge.port;
+    ui.btnHandoff.disabled = !host.client || !state.field;
     render();
   }
 
@@ -1406,9 +1737,9 @@ body[data-view="src"] #stage,body[data-view="dst"] #stage{grid-template-columns:
 
   /** 选图：有宿主就走宿主原生对话框，否则用 input[type=file]。 */
   ui.btnPick.addEventListener("click", async () => {
-    if (bridge.port) {
+    if (host.client) {
       try {
-        const res = await bridge.call("image.pick", {}, 120000);
+        const res = await host.client.image.pick();
         const blob = blobFromPick(res);
         if (!blob) { toast("宿主没有返回可用的图片数据"); return; }
         loadBlob(blob);
@@ -1525,11 +1856,11 @@ body[data-view="src"] #stage,body[data-view="dst"] #stage{grid-template-columns:
 
   // ---------------- 交给 Lumina ----------------
   ui.btnHandoff.addEventListener("click", async () => {
-    if (!state.field || !bridge.port) return;
+    if (!state.field || !host.client) return;
     try {
       const png = await toPng8Buffer(state.field, state.width, state.height);
       const ph = physSize();
-      await bridge.call("handoff.image", {
+      await host.client.handoff.image({
         moduleId: MODULE_ID,
         moduleVersion: MODULE_VERSION,
         projectId: "hf-" + Date.now().toString(36),
@@ -1548,7 +1879,7 @@ body[data-view="src"] #stage,body[data-view="dst"] #stage{grid-template-columns:
           renderSchemaVersion: "heightforge.heightmap/1",
           payload: Object.assign({}, state.params, { width: state.width, height: state.height }),
         },
-      }, 120000);
+      });
       $("hostBadge").textContent = "已交给 Lumina";
       $("hostBadge").className = "badge ok";
     } catch (err) {

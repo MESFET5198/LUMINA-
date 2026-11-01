@@ -32,9 +32,28 @@
 Everything runs locally in the sandboxed module frame. The module requests only
 `image.pick` and `handoff.image`.
 
+## 依赖 / Dependencies
+
+宿主契约来自官方 `@lumina/workshop-sdk`，只通过公开仓库的**不可变 GitHub Release** 分发，
+不发布 `latest`，也不上传 npm registry。依赖按要求锁到含确切版本的 Release URL（`--save-exact`）：
+
+```json
+"@lumina/workshop-sdk": "https://github.com/lumina-layer-studio/Lumina-Workshop-SDK/releases/download/v1.0.2/lumina-workshop-sdk-1.0.2.tgz"
+```
+
+```bash
+pnpm install                # 按上面的 Release URL 拉取 1.0.2，并生成 pnpm-lock.yaml
+node tools/bundle_sdk.mjs   # 把 SDK 内联进 ui/index.html（模块运行时必须自包含、无外链）
+```
+
+SDK 的 `connectWorkshop()` 负责握手（`lumina.workshop.ready` → `lumina.workshop.connect` + `MessagePort`）、
+RPC 封装与超时/帧校验；模块侧只调用 `client.image.pick()`、`client.handoff.image()`、`client.lifecycle.ready()`。
+
 ## 构建 / Build
 
 ```bash
+pnpm install                       # 首次：从 Release URL 拉取 SDK（版本固定）
+node tools/bundle_sdk.mjs          # 内联 SDK 到 ui/index.html
 python tools/build_package.py      # 产出 dist/*.lumina-workshop 并做静态检查
 python tools/run_js_tests.py       # 引擎单测（无头浏览器）
 python tests/test_registry_record.py
@@ -42,5 +61,5 @@ python tests/test_registry_record.py
 
 ## 版本 / Version
 
-1.1.2 — 对齐 HeightForge 1.3.0 的映射与导出能力；Workshop API `1.0.0` / Manifest `1`。
+1.2.0 — 对齐 HeightForge 1.3.0 的映射与导出能力；Workshop API `1.0.0` / Manifest `1`。
 1.0.0 — 首个可安装版本（8 种来源、5 个预设、16 位 PNG 导出）。

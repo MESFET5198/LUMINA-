@@ -40,7 +40,7 @@
    import zipfile, pathlib
    dest = pathlib.Path(r"%APPDATA%\lumina-electron\workshop\modules\studio.heightforge.heightmap\1.0.0")
    dest.mkdir(parents=True, exist_ok=True)
-   with zipfile.ZipFile(r"D:\DSH\heightforge-workshop\dist\studio.heightforge.heightmap-1.1.2.lumina-workshop") as z:
+   with zipfile.ZipFile(r"D:\DSH\heightforge-workshop\dist\studio.heightforge.heightmap-1.2.0.lumina-workshop") as z:
        z.extractall(dest)
    print("extracted ->", dest)
    PY
