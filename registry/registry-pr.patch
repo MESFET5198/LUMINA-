@@ -1,13 +1,13 @@
 diff --git a/modules/studio.heightforge.heightmap.json b/modules/studio.heightforge.heightmap.json
 new file mode 100644
-index 0000000000000000000000000000000000000000..036a299c46c2cb46617541c14a52f4d113bbcf0f
+index 0000000000000000000000000000000000000000..3bce354a1398031e89b8255803b64547d38ab5ff
 --- /dev/null
 +++ b/modules/studio.heightforge.heightmap.json
 @@ -0,0 +1,36 @@
 +{
 +  "schemaVersion": 1,
 +  "moduleId": "studio.heightforge.heightmap",
-+  "repository": "https://github.com/OWNER/heightforge-workshop",
++  "repository": "https://github.com/xueseyinlang-cmyk/LUMINA-",
 +  "official": false,
 +  "publisher": "HeightForge Studio",
 +  "versions": [
