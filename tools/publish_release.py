@@ -108,7 +108,7 @@ def main() -> int:
         raise SystemExit(f"找不到资产：{asset}")
     payload = asset.read_bytes()
     digest = hashlib.sha256(payload).hexdigest()
-    name = args.name or asset.name
+    name = asset.name  # 资产文件名必须是包名，标题不要混进来（带空格会被 URL 拒绝）
     print(f"[asset] {name}  {len(payload)} bytes  sha256={digest}")
 
     tok = token()
@@ -128,7 +128,7 @@ def main() -> int:
             f"/repos/{OWNER}/{REPO}/releases", tok=tok,
             data={
                 "tag_name": args.tag,
-                "name": f"studio.heightforge.heightmap {args.tag}",
+                "name": args.name or f"studio.heightforge.heightmap {args.tag}",
                 "body": notes,
                 "draft": False,
                 "prerelease": False,
