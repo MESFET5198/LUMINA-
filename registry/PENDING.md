@@ -57,3 +57,21 @@ PYTHONPATH=src python scripts/validate_sources.py --modules <registry>/modules -
   `action_required`，需要维护者点一次批准才会开跑。
 - 若审核要求「版本必须与模块仓库 tag 一一对应且不可重打」，1.3.0 的 tag 必须是新 tag
   （不要复用 `v1.2.0`）；本次已按新 tag `v1.3.0` 处理。
+
+## 1.3.0 发布进展（2026-11-02 21:0x 实测）
+
+| 环节 | 状态 |
+| --- | --- |
+| 模块仓库 main | 已推送 `89f7601`（tag `v1.3.0`） |
+| Release | 已创建 id `431476858`，非 draft、非 prerelease |
+| 资产 | `studio.heightforge.heightmap-1.3.0.lumina-workshop`，API 记录 197,547 字节 / sha256 `37484c2b…` |
+| 下载地址复核 | `https://github.com/xueseyinlang-cmyk/LUMINA-/releases/download/v1.3.0/studio.heightforge.heightmap-1.3.0.lumina-workshop` → 197,547 字节、sha256 一致（首次替换后 CDN 有约 8 分钟旧缓存，已过期） |
+| Registry fork 分支 | 本地已提交 `6d81605`（记录改为 1.3.0），**尚未推送**（沙箱禁止 remote-https 建管道） |
+| PR 正文 | `registry/PR_BODY.md` 已按 1.3.0 重写，**尚未 PATCH 到 PR #5** |
+
+推送 fork 分支只需一条命令：
+
+```bash
+cd D:/DSH/heightforge-workshop/.tmp/fork
+git -c http.schannelCheckRevoke=false -c http.proxy=http://127.0.0.1:7890     push origin HEAD:add-studio-heightforge
+```
