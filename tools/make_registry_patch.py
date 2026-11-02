@@ -80,7 +80,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     patch, dest, subject = build_patch(record_path)
-    args.out.write_text(patch, encoding="utf-8")
+    args.out.write_text(patch, encoding="utf-8", newline="\n")
     print(f"[ok] {args.out}")
     print(f"     目标文件: {dest}")
     print(f"     建议提交标题: {subject}")

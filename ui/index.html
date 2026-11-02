@@ -197,6 +197,7 @@ body[data-view="src"] #stage,body[data-view="dst"] #stage{grid-template-columns:
         <span class="val" id="valBlur">0.5</span></div>
       <div class="row"><label style="width:auto">反相（黑→白）</label>
         <input type="checkbox" id="chkInvert"></div>
+      <p class="hint" id="hintCurves" hidden>台阶化已开启：Gamma 与对比不参与，高度由分层决定（色阶仍决定区间位置）。</p>
     </fieldset>
 
     <fieldset>
@@ -259,15 +260,19 @@ body[data-view="src"] #stage,body[data-view="dst"] #stage{grid-template-columns:
 <footer>
   <span class="mono" id="statRange">未载入</span>
   <span class="spacer" style="flex:1"></span>
-  <select id="selExport" style="width:150px">
-    <option value="png16">16 位灰度 PNG（推荐）</option>
-    <option value="png8">8 位灰度 PNG</option>
-    <option value="normal">法线图 PNG</option>
-    <option value="obj">OBJ 网格</option>
-    <option value="meta">参数 JSON</option>
-  </select>
-  <label style="width:auto; color:var(--muted)"><input type="checkbox" id="chkMeta"> 附带 JSON</label>
-  <button id="btnExport">导出</button>
+  <!-- 工坊沙箱里没有 allow-downloads，独立导出收起并说明支持范围；独立打开时照常可用 -->
+  <span id="exportNote" hidden style="color:var(--muted); font-size:12px; max-width:620px"></span>
+  <span id="exportCtl" style="display:flex; align-items:center; gap:8px">
+    <select id="selExport" style="width:150px">
+      <option value="png16">16 位灰度 PNG（推荐）</option>
+      <option value="png8">8 位灰度 PNG</option>
+      <option value="normal">法线图 PNG</option>
+      <option value="obj">OBJ 网格</option>
+      <option value="meta">参数 JSON</option>
+    </select>
+    <label style="width:auto; color:var(--muted)"><input type="checkbox" id="chkMeta"> 附带 JSON</label>
+    <button id="btnExport">导出</button>
+  </span>
 </footer>
 <div id="toast"></div>
 
@@ -744,6 +749,73 @@ async function connectWorkshop(options) {
     return out;
   }
 
+  /**
+   * 台阶化专用管线：模糊 → 输入色阶 → 分层 → 反相 → 输出量程。
+   *
+   * 与 mapField 的唯一区别是**不应用 gamma / 对比**：分层一旦开启就由分层决定每档高度，
+   * 这与界面「开启后 Gamma / 对比 不参与」的说明一致（面板上这两项会被禁用）。
+   * 色阶仍然决定分层区间的位置，反相与输出量程照旧生效——与桌面版 1.3.0 语义相同。
+   */
+  function mapFieldBanded(src, w, h, p, layers, fallback = 0) {
+    const blurred = blurField(src, w, h, p.blur);
+    const lo = p.inLo, hi = p.inHi;
+    const span = hi - lo;
+    const leveled = new Float32Array(blurred.length);
+    for (let i = 0; i < blurred.length; i++) {
+      const v = blurred[i];
+      // 输入色阶：黑场/白场退化时按阈值二值，避免除零
+      leveled[i] = Math.abs(span) < 1e-6 ? (v >= lo ? 1 : 0) : clamp01((v - lo) / span);
+    }
+    const banded = applyLayers(leveled, layers, fallback);
+    for (let i = 0; i < banded.length; i++) {
+      let v = banded[i];
+      if (p.invert) v = 1 - v;
+      banded[i] = clamp01(p.outLo + v * (p.outHi - p.outLo));
+    }
+    return banded;
+  }
+
+  // ---------- 交互状态（纯函数：界面与单元测试共用同一实现） ----------
+  /**
+   * 宿主交接结果分类。
+   * - `{status:"completed"}`：已真正替换/载入转换器；
+   * - `{status:"needs-confirmation"}`：转换器里有图片，宿主等模块用**同一个 projectId** 再发一次；
+   * - 其它：宿主返回了看不懂的 status。
+   */
+  function handoffOutcome(res) {
+    const status = res && typeof res.status === "string" ? res.status : "completed";
+    if (status === "completed") return "completed";
+    if (status === "needs-confirmation") return "needs-confirmation";
+    return "unexpected";
+  }
+
+  /** 「交给 Lumina」按钮状态：未连宿主或无高度图时禁用；等待确认时文案改成「确认替换」。 */
+  function handoffUiState(opts) {
+    const connected = !!(opts && opts.connected);
+    const hasField = !!(opts && opts.hasField);
+    const pending = !!(opts && opts.pending);
+    return {
+      disabled: !connected || !hasField,
+      label: pending ? "确认替换" : "交给 Lumina",
+      tone: pending ? "warn" : "primary",
+    };
+  }
+
+  /**
+   * 独立导出在宿主沙箱里不可用：工坊把模块放在 `sandbox="allow-scripts"` 的 iframe 里，
+   * 没有 allow-downloads，`a.download` 不会产生任何产物，也不会报错。
+   * 独立打开（不在 iframe 里）时浏览器允许下载，五个格式照常可用。
+   */
+  function exportScope(hosted) {
+    return hosted
+      ? {
+          available: false,
+          formats: [],
+          reason: "工坊沙箱不允许模块直接下载文件；请用「交给 Lumina」把高度图交给转换器，其它格式请在桌面版导出。",
+        }
+      : { available: true, formats: ["png16", "png8", "normal", "obj", "meta"], reason: "" };
+  }
+
   function stats(field) {
     let mn = 1, mx = 0, sum = 0;
     for (let i = 0; i < field.length; i++) {
@@ -1098,6 +1170,7 @@ async function connectWorkshop(options) {
     histogram, autoLevels, applyLayers, normalRGBA, shadeRGBA,
     encodePngGray, encodePngRgb, buildObj,
     stripEdges, stripHit, clampEdge,
+    mapFieldBanded, handoffOutcome, handoffUiState, exportScope,
   };
 })(window);
 </script>
@@ -1108,7 +1181,7 @@ async function connectWorkshop(options) {
 (function () {
   const E = window.HeightForgeEngine;
   const MODULE_ID = "studio.heightforge.heightmap";
-  const MODULE_VERSION = "1.2.0";
+  const MODULE_VERSION = "1.3.0";
   const API_VERSION = "1.0.0";
 
   const $ = (id) => document.getElementById(id);
@@ -1174,7 +1247,38 @@ async function connectWorkshop(options) {
     const el = $("hostBadge");
     el.textContent = connected ? "已连接 Lumina" : "独立模式";
     el.className = "badge " + (connected ? "ok" : "warn");
-    $("btnHandoff").disabled = !connected || !state.field;
+    syncHandoff();
+  }
+
+  /** 交接按钮的唯一状态来源：已连宿主 + 已有高度图 + 是否在等「确认替换」。 */
+  function syncHandoff() {
+    const s = E.handoffUiState({
+      connected: !!host.client,
+      hasField: !!state.field,
+      pending: !!state.handoffPending,
+    });
+    ui.btnHandoff.disabled = s.disabled;
+    ui.btnHandoff.textContent = s.label;
+    ui.btnHandoff.classList.toggle("warn", s.tone === "warn");
+  }
+
+  /**
+   * 交接用的 projectId：同一份交接（含改参数后的重试、等待确认的第二次点击）复用同一个 id。
+   * 宿主只按 `moduleId + projectId` 认「这是同一个待确认的交接」，换 id 就等于换了一次交接，
+   * 重复点击永远落不进确认分支。换图或交接成功后换新 id。
+   */
+  function rotateHandoffId() {
+    state.handoffProjectId =
+      "hf-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
+    state.handoffPending = false;
+  }
+
+  /** 台阶化开启时 Gamma / 对比不参与：禁用这两条滑杆并显示说明。 */
+  function syncCurveEnable() {
+    const banded = !!(state.layersOn && state.layers.length);
+    for (const el of [ui.rngGamma, ui.rngContrast]) if (el) el.disabled = banded;
+    const note = $("hintCurves");
+    if (note) note.hidden = !banded;
   }
 
   // ---------------- 参数 UI 同步 ----------------
@@ -1206,6 +1310,10 @@ async function connectWorkshop(options) {
     view: "split", preview: "gray", hist: null, layers: [], layersOn: false,
     selLayer: 0, normStrength: 1, flipGreen: false, phys: 10, unit: "mm",
     drag: null, hoverEdge: -1, rowNodes: [],
+    // 交接：同一个 projectId 复用到「确认替换」，pending 表示宿主正在等第二次点击
+    handoffProjectId: "", handoffPending: false,
+    // 独立导出是否可用（宿主沙箱里为 false）
+    exportAvailable: true,
   });
 
   /** 顶部提示（3 秒后自动淡出）。 */
@@ -1476,6 +1584,7 @@ async function connectWorkshop(options) {
       buildLayerRows();
     }
     drawStrip();
+    syncCurveEnable();
     schedule();
   });
   ui.numLayerCount.addEventListener("change", () => {
@@ -1653,7 +1762,7 @@ async function connectWorkshop(options) {
 
   /** 一次完整重算：来源 → 色阶/曲线 → （可选）分层 → 预览。 */
   function render() {
-    if (!state.rgba) { updateHist(); return; }
+    if (!state.rgba) { updateHist(); syncHandoff(); return; }
     const t0 = performance.now();
     const p = state.params;
     const w = state.width, h = state.height;
@@ -1669,9 +1778,11 @@ async function connectWorkshop(options) {
 
     let field;
     try {
-      field = E.mapField(raw, w, h, p);
       if (state.layersOn && state.layers.length) {
-        field = E.applyLayers(field, state.layers, 0);
+        // 台阶化接管映射：跳过 gamma / 对比，与面板说明一致
+        field = E.mapFieldBanded(raw, w, h, p, state.layers, 0);
+      } else {
+        field = E.mapField(raw, w, h, p);
       }
     } catch (err) {
       toast("映射失败：" + (err.message || err));
@@ -1696,6 +1807,9 @@ async function connectWorkshop(options) {
     ui.statRange.textContent =
       `${w}×${h} · ${Math.round(performance.now() - t0)} ms · min ${st.min.toFixed(3)} · max ${st.max.toFixed(3)} · mean ${st.mean.toFixed(3)}`;
     updateHist();
+    // 首次算出高度图后这里才置 state.field —— 交接按钮必须在这里同步，否则第一次载图不可点
+    syncHandoff();
+    syncCurveEnable();
   }
 
   // ---------------- 载图 ----------------
@@ -1717,7 +1831,10 @@ async function connectWorkshop(options) {
     $("tagSrc").textContent = "原图 · " + w + "×" + h;
     $("tagDst").textContent = "高度图 · 白 = 高 黑 = 低";
     ui.imgInfo.textContent = `${w}×${h} · ${(w * h / 1e6).toFixed(2)} MP`;
-    ui.btnHandoff.disabled = !host.client || !state.field;
+    // 换图 = 换一次交接：旧的高度图与「待确认」一起作废，projectId 也换新
+    state.field = null;
+    rotateHandoffId();
+    syncHandoff();
     render();
   }
 
@@ -1802,6 +1919,20 @@ async function connectWorkshop(options) {
   });
 
   // ---------------- 导出 ----------------
+  // 工坊沙箱（sandbox="allow-scripts"）没有 allow-downloads：a.download 点了不会有任何产物，
+  // 也不会报错。所以在宿主里收起这些入口并在页脚写明支持范围；独立打开时照常可用。
+  function applyExportScope() {
+    const scope = E.exportScope(window.parent !== window);
+    const ctl = $("exportCtl"), note = $("exportNote");
+    if (ctl) ctl.hidden = !scope.available;
+    if (note) {
+      note.hidden = scope.available;
+      if (!scope.available) note.textContent = scope.reason;
+    }
+    state.exportAvailable = scope.available;
+    return scope;
+  }
+
   function download(bytes, name, type) {
     const blob = bytes instanceof Blob ? bytes : new Blob([bytes], { type });
     const url = URL.createObjectURL(blob);
@@ -1836,6 +1967,7 @@ async function connectWorkshop(options) {
 
   ui.btnExport.addEventListener("click", () => {
     if (!state.field) { toast("先载入图片"); return; }
+    if (state.exportAvailable === false) { toast($("exportNote").textContent); return; }
     const w = state.width, h = state.height, f = state.field;
     const kind = ui.selExport.value;
     try {
@@ -1855,15 +1987,18 @@ async function connectWorkshop(options) {
   });
 
   // ---------------- 交给 Lumina ----------------
+  // 宿主约定：转换器里已有图片时 `handoff.image` 返回 {status:"needs-confirmation"}，
+  // 此时宿主要求模块**用同一个 projectId 再发一次**，第二次才执行替换并返回 {status:"completed"}。
   ui.btnHandoff.addEventListener("click", async () => {
     if (!state.field || !host.client) return;
+    ui.btnHandoff.disabled = true;
     try {
       const png = await toPng8Buffer(state.field, state.width, state.height);
       const ph = physSize();
-      await host.client.handoff.image({
+      const res = await host.client.handoff.image({
         moduleId: MODULE_ID,
         moduleVersion: MODULE_VERSION,
-        projectId: "hf-" + Date.now().toString(36),
+        projectId: state.handoffProjectId,
         pngBytes: png,
         pixelWidth: state.width,
         pixelHeight: state.height,
@@ -1880,11 +2015,28 @@ async function connectWorkshop(options) {
           payload: Object.assign({}, state.params, { width: state.width, height: state.height }),
         },
       });
+      const outcome = E.handoffOutcome(res);
+      if (outcome === "needs-confirmation") {
+        state.handoffPending = true;
+        $("hostBadge").textContent = "转换器已有图片：再点一次替换";
+        $("hostBadge").className = "badge warn";
+        toast("Lumina 转换器里已有图片 —— 再点一次「确认替换」即可覆盖");
+        return;
+      }
+      if (outcome !== "completed") {
+        $("hostBadge").textContent = "交接结果未知：" + ((res && res.status) || "无 status");
+        $("hostBadge").className = "badge warn";
+        return;
+      }
       $("hostBadge").textContent = "已交给 Lumina";
       $("hostBadge").className = "badge ok";
+      // 这次交接完成：下一次交接是一个新条目，重新走一遍确认
+      rotateHandoffId();
     } catch (err) {
       $("hostBadge").textContent = "交接失败：" + (err.message || "未知错误");
       $("hostBadge").className = "badge warn";
+    } finally {
+      syncHandoff();
     }
   });
 
@@ -1969,6 +2121,9 @@ async function connectWorkshop(options) {
   buildLayerRows();
   drawStrip();
   updateHist();
+  rotateHandoffId();
+  applyExportScope();
+  syncCurveEnable();
   setHostBadge(false);
 
 })();

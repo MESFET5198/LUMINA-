@@ -332,6 +332,69 @@ function rgbaOf(r, g, b, a) {
   ok("台阶条：外侧边不可拖", E.clampEdge(layers, 0, 0.3, 0.01) === null && E.clampEdge(layers, 2, 0.3, 0.01) === null);
   ok("台阶条：普通拖动原样返回", near(E.clampEdge(layers, 1, 0.4, 0.01), 0.4, 1e-9));
 }
+// --- 台阶化 × Gamma/对比：分层接管后曲线不参与（验收问题 4）----------------
+{
+  const src = new Float32Array([0.1, 0.35, 0.6, 0.9]);
+  const layers = [
+    { lo: 0, hi: 0.5, height: 0.15, feather: 0 },
+    { lo: 0.5, hi: 1, height: 0.85, feather: 0 },
+  ];
+  const base = { inLo: 0, inHi: 1, blur: 0, invert: false, outLo: 0, outHi: 1 };
+  const low = E.mapFieldBanded(src, 4, 1, Object.assign({}, base, { gamma: 0.2, contrast: 0.3 }), layers);
+  const high = E.mapFieldBanded(src, 4, 1, Object.assign({}, base, { gamma: 3, contrast: 2.5 }), layers);
+  ok("台阶化：Gamma/对比完全不参与",
+     low.every((v, i) => Math.abs(v - high[i]) < 1e-9), `[${low}] vs [${high}]`);
+  ok("台阶化：两档高度落到分层值",
+     near(low[0], 0.15) && near(low[2], 0.85), `[${low[0]},${low[2]}]`);
+  // 对照：不开台阶化时 Gamma 必须真的起作用，否则上面的断言等于没测
+  const plainA = E.mapField(src, 4, 1, Object.assign({}, base, { gamma: 0.2, contrast: 1 }), 0);
+  const plainB = E.mapField(src, 4, 1, Object.assign({}, base, { gamma: 3, contrast: 1 }), 0);
+  ok("对照：非台阶化时 Gamma 生效", !near(plainA[0], plainB[0], 1e-3), `[${plainA[0]},${plainB[0]}]`);
+}
+// --- 台阶化 × 输入色阶 / 反相 / 输出量程 ------------------------------------
+{
+  const src = new Float32Array([0.3, 0.6, 0.9]);
+  const layers = [{ lo: 0, hi: 0.5, height: 0.1, feather: 0 }, { lo: 0.5, hi: 1, height: 0.9, feather: 0 }];
+  // 色阶 0.5–1.0 把 0.6 压到 0.2 → 落回第一档；不套色阶时 0.6 应该在第二档
+  const p = { inLo: 0.5, inHi: 1.0, gamma: 2, contrast: 2, blur: 0, invert: false, outLo: 0, outHi: 1 };
+  const out = E.mapFieldBanded(src, 3, 1, p, layers);
+  ok("台阶化：色阶仍决定区间位置", near(out[0], 0.1) && near(out[1], 0.1) && near(out[2], 0.9), `[${out}]`);
+  const raw = E.mapFieldBanded(src, 3, 1, Object.assign({}, p, { inLo: 0, inHi: 1 }), layers);
+  ok("对照：不套色阶时 0.6 落在第二档", near(raw[1], 0.9), `[${raw}]`);
+  const range = E.mapFieldBanded(src, 3, 1, Object.assign({}, p, { outLo: 0.1, outHi: 0.5 }), layers);
+  ok("台阶化：输出量程照旧",
+     near(range[0], 0.1 + 0.4 * 0.1) && near(range[2], 0.1 + 0.4 * 0.9), `[${range}]`);
+  const inv = E.mapFieldBanded(src, 3, 1, Object.assign({}, p, { invert: true }), layers);
+  ok("台阶化：反相交换两端", near(inv[0], 0.9) && near(inv[2], 0.1), `[${inv}]`);
+}
+// --- 宿主交接返回值分类（验收问题 2）--------------------------------------
+{
+  ok("交接：completed 记为成功", E.handoffOutcome({ status: "completed" }) === "completed");
+  ok("交接：needs-confirmation 单独分类",
+     E.handoffOutcome({ status: "needs-confirmation" }) === "needs-confirmation");
+  ok("交接：缺省 status 视为 completed", E.handoffOutcome(undefined) === "completed"
+     && E.handoffOutcome({}) === "completed");
+  ok("交接：未知 status 不冒充成功", E.handoffOutcome({ status: "failed" }) === "unexpected");
+}
+// --- 交接按钮状态（验收问题 1：首次出图后必须可点）------------------------
+{
+  const off = E.handoffUiState({ connected: false, hasField: true, pending: false });
+  ok("按钮：未连宿主禁用", off.disabled === true);
+  const noField = E.handoffUiState({ connected: true, hasField: false, pending: false });
+  ok("按钮：没有高度图禁用", noField.disabled === true);
+  const ready = E.handoffUiState({ connected: true, hasField: true, pending: false });
+  ok("按钮：连上且出图即可点", ready.disabled === false && ready.label === "交给 Lumina", ready.label);
+  const pend = E.handoffUiState({ connected: true, hasField: true, pending: true });
+  ok("按钮：待确认时提示确认替换", pend.disabled === false && pend.label === "确认替换" && pend.tone === "warn", pend.label);
+}
+// --- 独立导出的可用范围（验收问题 3）--------------------------------------
+{
+  const standalone = E.exportScope(false);
+  ok("导出：独立打开时可用", standalone.available === true && standalone.formats.length === 5);
+  const hosted = E.exportScope(true);
+  ok("导出：宿主沙箱内收起", hosted.available === false && hosted.formats.length === 0
+     && hosted.reason.indexOf("沙箱") >= 0, hosted.reason);
+}
 """
 
 HARNESS = """<!doctype html>

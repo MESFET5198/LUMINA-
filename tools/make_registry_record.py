@@ -281,7 +281,9 @@ def main(argv: list[str] | None = None) -> int:
         target_dir = ROOT / "registry" / ("draft" if args.draft else "modules")
         target_dir.mkdir(parents=True, exist_ok=True)
         target = target_dir / f"{record['moduleId']}.json"
-        target.write_text(json.dumps(record, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        # 固定换行符：Windows 上 write_text 会把 LF 写成 CRLF，PR 里整篇报 trailing whitespace
+        payload = json.dumps(record, ensure_ascii=False, indent=2) + "\n"
+        target.write_text(payload, encoding="utf-8", newline="\n")
     except (RecordError, OSError, ValueError, KeyError) as exc:
         print(f"[fail] {exc}")
         return 1

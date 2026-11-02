@@ -1,7 +1,7 @@
-# PR 描述（可直接粘贴到 Lumina-Workshop-Registry 的新建 PR）
+# PR 描述（Lumina-Workshop-Registry）
 
-> 使用前把 `<owner>/<repo>` 换成真实仓库地址；除此之外不需要改动任何摘要或字节数
-> （数字来自 `dist/` 现场计算，见文末验证输出）。
+> 本文档即 PR 正文，可直接粘贴。所有摘要与字节数均由 `dist/` 现场计算
+> （`python tools/build_package.py` + `tools/make_registry_record.py`），未经手写。
 
 ---
 
@@ -9,12 +9,12 @@
 
 - Module IDs affected: `studio.heightforge.heightmap` (new module, community publisher)
 - Immutable GitHub Release tags and assets:
-  `v1.0.0` → `studio.heightforge.heightmap-1.2.0.lumina-workshop`
-  — 194,969 bytes, sha256 `a516432f66661a8f7b0d70277045450a548c09fe7e2241eb8f2fee0b77bc48a9`,
-  manifest sha256 `4b305567d0593b31586436cd103e38f78c6918cec80ec887c1db849127e86f88`.
-  Asset URL: `https://github.com/<owner>/<repo>/releases/download/v1.0.0/studio.heightforge.heightmap-1.2.0.lumina-workshop`
+  `v1.3.0` → `studio.heightforge.heightmap-1.3.0.lumina-workshop`
+  — 197,547 bytes, sha256 `37484c2b3f2b559c14b6fbc6efec3f97914a4412243c80e267c7b3bd6a883fa5`,
+  manifest sha256 `b34ff8c5db0c7f693e92d42c65c550e0cb595be43413ac78e90d81a887644744`.
+  Asset URL: `https://github.com/xueseyinlang-cmyk/LUMINA-/releases/download/v1.3.0/studio.heightforge.heightmap-1.3.0.lumina-workshop`
 - Permission or compatibility changes:
-  new module declaring `image.pick` and `handoff.image` only (no network, no storage).
+  New module declaring `image.pick` and `handoff.image` only (no network, no storage).
   `workshopApi`: `>=1.0.0 <2.0.0`; `luminaVersion`: `>=2.0.0`.
 - Ownership changes: none (v1 rejects ownership transfer in normal PRs)
 - Revocation evidence, if applicable: none — version `state` is `active`, `revocation` is `null`
@@ -24,10 +24,10 @@
 
 - 涉及的模块 ID：`studio.heightforge.heightmap`（新模块，社区发布者）
 - 不可变 GitHub Release 标签与资产：
-  `v1.0.0` → `studio.heightforge.heightmap-1.2.0.lumina-workshop`
-  —— 194,969 字节，sha256 `a516432f66661a8f7b0d70277045450a548c09fe7e2241eb8f2fee0b77bc48a9`，
-  manifest sha256 `4b305567d0593b31586436cd103e38f78c6918cec80ec887c1db849127e86f88`。
-  资产地址：`https://github.com/<owner>/<repo>/releases/download/v1.0.0/studio.heightforge.heightmap-1.2.0.lumina-workshop`
+  `v1.3.0` → `studio.heightforge.heightmap-1.3.0.lumina-workshop`
+  —— 197,547 字节，sha256 `37484c2b3f2b559c14b6fbc6efec3f97914a4412243c80e267c7b3bd6a883fa5`，
+  manifest sha256 `b34ff8c5db0c7f693e92d42c65c550e0cb595be43413ac78e90d81a887644744`。
+  资产地址：`https://github.com/xueseyinlang-cmyk/LUMINA-/releases/download/v1.3.0/studio.heightforge.heightmap-1.3.0.lumina-workshop`
 - 权限或兼容范围变化：
   新模块，只申请 `image.pick` 与 `handoff.image`（无网络、无工程存储权限）。
   `workshopApi`：`>=1.0.0 <2.0.0`；`luminaVersion`：`>=2.0.0`。
@@ -40,10 +40,13 @@
 ## 模块说明 / About the module
 
 **做什么 / What it does**：在工坊里把一张图片转成高度图，并把结果 PNG 交给 Lumina 的
-浮雕/拼豆转换器。参数与桌面版 HeightForge 1.3.0 一致：高度来源（亮度/平均/通道/饱和度/
-颜色距离）、输入色阶、Gamma、S 曲线对比、模糊、反相、输出量程，另有 6 个预设。
+浮雕/拼豆转换器。参数与桌面版 HeightForge 1.3.0 一致：
+10 种高度来源（亮度 Rec.709 / 线性亮度 / 平均 / 最大 / R / G / B / Alpha / 饱和度 / 颜色距离）、
+输入色阶 + 自动色阶 + 直方图、Gamma、S 曲线对比、高斯平滑、反相、输出量程、
+物理高度（mm/cm/in）、台阶化分层（2–8 层，亮度区间 / 颜色选区，可拖拽台阶条）、
+三种预览（灰度 / 山体着色 / 法线图）、导出 16 位 / 8 位 PNG、法线图、OBJ 与参数 JSON。
 Turn an image into a height map with the same mapping pipeline as the HeightForge
-desktop app, then hand the PNG to Lumina's converter.
+desktop app, then hand the result to Lumina's converter.
 
 **为什么只申请两个权限 / Why only two permissions**：
 
@@ -51,45 +54,56 @@ desktop app, then hand the PNG to Lumina's converter.
 | --- | --- | --- |
 | `image.pick` | 用户主动选图后读取像素做映射 | 没有它就无法拿到图像 |
 | `handoff.image` | 把生成的高度图 PNG 交给 Lumina 转换器 | 没有它结果只能停在模块内部 |
-| ~~`project.storage`~~ | 本轮不做工程保存，按“不申请未使用权限”的要求不声明 | 参数通过界面即时生效，退出即丢弃 |
+| ~~`project.storage`~~ | 本轮不做工程保存，按「不申请未使用权限」的要求不声明 | 参数通过界面即时生效，退出即丢弃 |
 | ~~`color-library.read`~~ | 用不到色库 | — |
 
 **没有网络**：模块内不发起任何请求（沙箱也会拦截）；`ui/index.html` 为单文件自包含，
 JS/CSS 全部内联，无 `src=`/`href=` 外链，无 `eval`/动态 `import`。
 
-**兼容范围怎么来的 / Compatibility evidence**：按宿主发布说明，Workshop API `1.0.0` 与
-Manifest `1` 为当前稳定契约，因此声明 `>=1.0.0 <2.0.0`；`luminaVersion >= 2.0.0` 对应
-当前桌面版线。**尚未在真机宿主里跑过端到端**（见下），如需更保守的范围请直接告诉我。
+**官方 SDK**：构建期依赖 `@lumina/workshop-sdk@1.0.2`，按规范以不可变 Release URL
+固定（`package.json` + `pnpm-lock.yaml`），随后用 `tools/bundle_sdk.mjs` 把
+`dist/{contracts,theme,client}.js` 确定性内联进 `ui/index.html` 的
+`<script id="lumina-sdk">`，运行期挂在 `window.LuminaWorkshop`；包内仍零外链。
+握手、`image.pick`、`handoff.image`、`lifecycle.ready` 全部走 SDK 的
+`connectWorkshop()` / `client.*`，没有自实现 RPC。
 
-**已在真机宿主里跑通端到端（2026-11-02，Lumina Studio 2.0.0-beta，Windows 11 26100）**：
+**兼容范围怎么来的 / Compatibility evidence**：按 SDK 契约
+（`WORKSHOP_API_VERSION = "1.0.0"`、`WORKSHOP_MANIFEST_VERSION = 1`）声明
+`>=1.0.0 <2.0.0`；`luminaVersion >= 2.0.0` 对应当前桌面版线。
+
+**已在真机宿主里跑通端到端（Lumina Studio 2.0.0-beta，Windows 11 26100）**：
 用本机公开的工坊后端接口 `POST /api/workshop/v1/install/local` 装包并 `activate`，
-模块在工坊里显示为「未审核 · 已启用 · 当前版本 1.0.0」，点「打开」后运行于沙箱 iframe，
-徽标显示「已连接 Lumina」；`image.pick` 走宿主原生选图对话框取图，管线实时出高度图，
-点「交给 Lumina」后客户端自动切到「图像转换」，左栏出现「创意工坊图像」来源标注
-（`studio.heightforge.heightmap`）。截图见仓库 `docs/ui_in_lumina.png` 与
+模块在工坊里显示为「未审核 · 已启用」，点「打开」后运行于沙箱 iframe，徽标显示
+「已连接 Lumina」；`image.pick` 拉起宿主原生选图对话框取图，管线实时出高度图，
+点「交给 Lumina」后客户端自动切到「图像转换」，左栏出现「创意工坊图像 · 来源模块
+studio.heightforge.heightmap」。截图见仓库 `docs/ui_in_lumina.png` 与
 `docs/ui_handoff_in_lumina.png`。
 
-**仍需说明的部分（如实标注）**：宿主桥接是按宿主 bundle 里的真实协议（`lumina.workshop.ready`
-→ `connect` + `MessagePort` → `lumina-workshop-rpc` 帧）自实现的，**没有用官方
-`@lumina/workshop-sdk` 依赖**——因为构建环境无法访问 npm/Release 资产。行为已按上述协议对齐，
-但若审核要求“必须依赖官方 SDK”，我可以改成引用 `1.0.2` 的 tgz 再重跑一遍。
+**1.3.0 修复的四个验收问题（本 PR 版本）**：
+
+| # | 问题 | 修复 |
+| --- | --- | --- |
+| 1 | 首次出图后「交给 Lumina」按钮仍不可点 | 按钮状态改为由 `syncHandoff()` 单一来源推导：`connected && field && !pending` 即可点，出图即同步 |
+| 2 | 转换器已有图片时重复点击无效 | 读 `handoff.image` 返回的 `{status}`：`needs-confirmation` 时按钮变「确认替换」并复用同一 `projectId`，再点一次即完成替换 |
+| 3 | 宿主沙箱里导出按钮点了没反应 | 宿主内隐藏导出控件并显示说明（导出只在独立打开时可用）；独立打开时五种格式照常，真的写出文件 |
+| 4 | 台阶化后 Gamma/对比仍在参与，与文案矛盾 | 分层时管线改走 `mapFieldBanded()`（模糊→色阶→分层→反相→量程，跳过 Gamma/对比），并禁用这两个滑杆 + 显示提示 |
 
 ---
 
 ## 验证输出 / Verification
 
 ```text
-$ python tools/build_package.py --check dist/studio.heightforge.heightmap-1.2.0.lumina-workshop
-[ok] dist\studio.heightforge.heightmap-1.2.0.lumina-workshop
-     id=studio.heightforge.heightmap version=1.0.0
-     194969 字节 / 解压 244897 字节 / 6 个文件
-     sha256=a516432f66661a8f7b0d70277045450a548c09fe7e2241eb8f2fee0b77bc48a9
-     manifestSha256=4b305567d0593b31586436cd103e38f78c6918cec80ec887c1db849127e86f88
+$ python tools/build_package.py
+[ok] dist\studio.heightforge.heightmap-1.3.0.lumina-workshop
+     id=studio.heightforge.heightmap version=1.3.0
+     197547 字节 / 解压 266475 字节 / 6 个文件
+     sha256=37484c2b3f2b559c14b6fbc6efec3f97914a4412243c80e267c7b3bd6a883fa5
+     manifestSha256=b34ff8c5db0c7f693e92d42c65c550e0cb595be43413ac78e90d81a887644744
      files=LICENSE, README.md, assets/gallery/screenshot.png, assets/icon.png, manifest.json, ui/index.html
 
 $ python tools/run_js_tests.py
-PASS ……（27 例）
-RESULT OK 27
+PASS ……（83 例）
+RESULT OK 83
 
 $ python tests/test_registry_record.py
 校验对象: registry\modules\studio.heightforge.heightmap.json
@@ -98,6 +112,6 @@ RESULT OK
 ```
 
 - 包内文件严格等于白名单：`manifest.json`、`ui/index.html`、`assets/icon.png`、
-  `assets/gallery/screenshot.png`、`README.md`、`LICENSE`（6 个，162 KB）。
-- 构建是确定性的：连续两次打包 sha256 完全一致，可用于满足“同一资产下载两次字节稳定”。
+  `assets/gallery/screenshot.png`、`README.md`、`LICENSE`（6 个）。
+- 构建是确定性的：连续两次打包 sha256 完全一致，可满足「同一资产下载两次字节稳定」。
 - 反例自测：多余文件、未知权限、外链脚本、缺 LICENSE、路径穿越、记录字段错配均被本地拦截。
