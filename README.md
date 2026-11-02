@@ -1,7 +1,7 @@
 # HeightForge 高度图 · Lumina 创意工坊模块
 
 把一张图片转成高度图，并把结果交给 Lumina 做成浮雕 / 拼豆。
-功能对齐桌面包 **HeightForge-1.3.0-win64**（能在浏览器沙箱里实现的部分）。
+功能对齐桌面包 **HeightForge-1.3.1-win64**（能在浏览器沙箱里实现的部分）。
 
 ## 功能 / Features
 
@@ -61,6 +61,6 @@ python tests/test_registry_record.py
 
 ## 版本 / Version
 
-1.2.0 — 对齐 HeightForge 1.3.0 的映射与导出能力；Workshop API `1.0.0` / Manifest `1`。
-1.3.0 — 修四个验收问题：首次出图即可交接、已有图片时二次确认替换、宿主内收起无效导出并说明、台阶化后 Gamma/对比真正不参与且状态同步。
+1.2.0 — 对齐 HeightForge 1.3.1 的映射与导出能力；Workshop API `1.0.0` / Manifest `1`。
+1.3.1 — 修四个验收问题：首次出图即可交接、已有图片时二次确认替换、宿主内收起无效导出并说明、台阶化后 Gamma/对比真正不参与且状态同步。
 1.0.0 — 首个可安装版本（8 种来源、5 个预设、16 位 PNG 导出）。

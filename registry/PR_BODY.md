@@ -9,10 +9,10 @@
 
 - Module IDs affected: `studio.heightforge.heightmap` (new module, community publisher)
 - Immutable GitHub Release tags and assets:
-  `v1.3.0` → `studio.heightforge.heightmap-1.3.0.lumina-workshop`
-  — 197,547 bytes, sha256 `37484c2b3f2b559c14b6fbc6efec3f97914a4412243c80e267c7b3bd6a883fa5`,
-  manifest sha256 `b34ff8c5db0c7f693e92d42c65c550e0cb595be43413ac78e90d81a887644744`.
-  Asset URL: `https://github.com/xueseyinlang-cmyk/LUMINA-/releases/download/v1.3.0/studio.heightforge.heightmap-1.3.0.lumina-workshop`
+  `v1.3.1` → `studio.heightforge.heightmap-1.3.1.lumina-workshop`
+  — 197,712 bytes, sha256 `984361f65526f1bd38928e149be0bc717418f6ecd5837111c92623376dcb6232`,
+  manifest sha256 `da26be3c722a0d6f907dd45596b1533b12ab50019b2b3ef974f2ca4527bc61e8`.
+  Asset URL: `https://github.com/xueseyinlang-cmyk/LUMINA-/releases/download/v1.3.1/studio.heightforge.heightmap-1.3.1.lumina-workshop`
 - Permission or compatibility changes:
   New module declaring `image.pick` and `handoff.image` only (no network, no storage).
   `workshopApi`: `>=1.0.0 <2.0.0`; `luminaVersion`: `>=2.0.0`.
@@ -24,10 +24,10 @@
 
 - 涉及的模块 ID：`studio.heightforge.heightmap`（新模块，社区发布者）
 - 不可变 GitHub Release 标签与资产：
-  `v1.3.0` → `studio.heightforge.heightmap-1.3.0.lumina-workshop`
-  —— 197,547 字节，sha256 `37484c2b3f2b559c14b6fbc6efec3f97914a4412243c80e267c7b3bd6a883fa5`，
-  manifest sha256 `b34ff8c5db0c7f693e92d42c65c550e0cb595be43413ac78e90d81a887644744`。
-  资产地址：`https://github.com/xueseyinlang-cmyk/LUMINA-/releases/download/v1.3.0/studio.heightforge.heightmap-1.3.0.lumina-workshop`
+  `v1.3.1` → `studio.heightforge.heightmap-1.3.1.lumina-workshop`
+  —— 197,712 字节，sha256 `984361f65526f1bd38928e149be0bc717418f6ecd5837111c92623376dcb6232`，
+  manifest sha256 `da26be3c722a0d6f907dd45596b1533b12ab50019b2b3ef974f2ca4527bc61e8`。
+  资产地址：`https://github.com/xueseyinlang-cmyk/LUMINA-/releases/download/v1.3.1/studio.heightforge.heightmap-1.3.1.lumina-workshop`
 - 权限或兼容范围变化：
   新模块，只申请 `image.pick` 与 `handoff.image`（无网络、无工程存储权限）。
   `workshopApi`：`>=1.0.0 <2.0.0`；`luminaVersion`：`>=2.0.0`。
@@ -40,7 +40,7 @@
 ## 模块说明 / About the module
 
 **做什么 / What it does**：在工坊里把一张图片转成高度图，并把结果 PNG 交给 Lumina 的
-浮雕/拼豆转换器。参数与桌面版 HeightForge 1.3.0 一致：
+浮雕/拼豆转换器。参数与桌面版 HeightForge 1.3.1 一致：
 10 种高度来源（亮度 Rec.709 / 线性亮度 / 平均 / 最大 / R / G / B / Alpha / 饱和度 / 颜色距离）、
 输入色阶 + 自动色阶 + 直方图、Gamma、S 曲线对比、高斯平滑、反相、输出量程、
 物理高度（mm/cm/in）、台阶化分层（2–8 层，亮度区间 / 颜色选区，可拖拽台阶条）、
@@ -79,7 +79,7 @@ JS/CSS 全部内联，无 `src=`/`href=` 外链，无 `eval`/动态 `import`。
 studio.heightforge.heightmap」。截图见仓库 `docs/ui_in_lumina.png` 与
 `docs/ui_handoff_in_lumina.png`。
 
-**1.3.0 修复的四个验收问题（本 PR 版本）**：
+**1.3.1 修复的四个验收问题（本 PR 版本）**：
 
 | # | 问题 | 修复 |
 | --- | --- | --- |
@@ -94,11 +94,11 @@ studio.heightforge.heightmap」。截图见仓库 `docs/ui_in_lumina.png` 与
 
 ```text
 $ python tools/build_package.py
-[ok] dist\studio.heightforge.heightmap-1.3.0.lumina-workshop
-     id=studio.heightforge.heightmap version=1.3.0
-     197547 字节 / 解压 266475 字节 / 6 个文件
-     sha256=37484c2b3f2b559c14b6fbc6efec3f97914a4412243c80e267c7b3bd6a883fa5
-     manifestSha256=b34ff8c5db0c7f693e92d42c65c550e0cb595be43413ac78e90d81a887644744
+[ok] dist\studio.heightforge.heightmap-1.3.1.lumina-workshop
+     id=studio.heightforge.heightmap version=1.3.1
+     197712 字节 / 解压 266475 字节 / 6 个文件
+     sha256=984361f65526f1bd38928e149be0bc717418f6ecd5837111c92623376dcb6232
+     manifestSha256=da26be3c722a0d6f907dd45596b1533b12ab50019b2b3ef974f2ca4527bc61e8
      files=LICENSE, README.md, assets/gallery/screenshot.png, assets/icon.png, manifest.json, ui/index.html
 
 $ python tools/run_js_tests.py
@@ -115,3 +115,15 @@ RESULT OK
   `assets/gallery/screenshot.png`、`README.md`、`LICENSE`（6 个）。
 - 构建是确定性的：连续两次打包 sha256 完全一致，可满足「同一资产下载两次字节稳定」。
 - 反例自测：多余文件、未知权限、外链脚本、缺 LICENSE、路径穿越、记录字段错配均被本地拦截。
+
+### 1.3.1 — 真机复核发现的两个显示缺陷
+
+在真实 Lumina Studio（工作坊沙箱）里逐项复核时发现两处「逻辑对、但用户看不出来」的问题，已在 1.3.1 修复：
+
+| 现象 | 原因 | 修复 |
+| --- | --- | --- |
+| 导出发送区在宿主里仍可见（应只留说明） | `#exportCtl` 带内联 `style="display:flex"`，优先级高于 `hidden` 属性 | 增加全局 `[hidden]{display:none !important}`，让 `hidden` 能压过任何内联 display |
+| 连接失败时只显示「独立模式」，无法判断原因 | 握手异常被静默吞掉 | 失败时在徽标上显示错误码（`独立模式 · <code>`）并写入 `title`，便于用户与维护者定位 |
+
+验证：引擎用例 83 条全过；`tools/verify_host_fixes.py` 假宿主回归 12 条全过；本机 1.3.1 安装/激活 HTTP 200；真机复核中导出栏只剩说明文字、开启台阶化后 Gamma/对比 呈禁用态并出现提示语。
+

@@ -61,6 +61,7 @@ aside input[type="number"]{width:64px; min-width:0}
   border:1px solid var(--line); border-radius:6px; background:#101114; touch-action:none}
 #hist{display:block}
 .row[hidden]{display:none} /* 类选择器的 display:flex 会盖掉 hidden 属性，这里补回来 */
+[hidden]{display:none !important} /* 内联 display 也要能被 hidden 压过（导出栏就踩过） */
 .row label{flex:none; width:88px; color:var(--muted); font-size:12px}
 .row .val{
   width:52px; text-align:right; font-variant-numeric:tabular-nums;
@@ -1181,7 +1182,7 @@ async function connectWorkshop(options) {
 (function () {
   const E = window.HeightForgeEngine;
   const MODULE_ID = "studio.heightforge.heightmap";
-  const MODULE_VERSION = "1.3.0";
+  const MODULE_VERSION = "1.3.1";
   const API_VERSION = "1.0.0";
 
   const $ = (id) => document.getElementById(id);
@@ -1234,8 +1235,12 @@ async function connectWorkshop(options) {
       } catch (err) { /* 可选能力 */ }
     } catch (err) {
       // 宿主可能比模块晚挂监听，按 SDK 的 handshakeTimeout 退避重试
+      host.lastError = (err && (err.code || err.name)) || "unknown";
       if (attempt < 6) setTimeout(() => connectHost(attempt + 1), 900);
-      else console.warn("[workshop] 连接失败:", err && err.code, err && err.message);
+      else {
+        console.warn("[workshop] 连接失败:", err && err.code, err && err.message);
+        setHostBadge(false);
+      }
     } finally {
       host.connecting = false;
     }
@@ -1245,7 +1250,9 @@ async function connectWorkshop(options) {
   function setHostBadge(connected) {
     host.connected = connected;
     const el = $("hostBadge");
-    el.textContent = connected ? "已连接 Lumina" : "独立模式";
+    const why = connected ? "" : (host.lastError ? " · " + host.lastError : "");
+    el.textContent = connected ? "已连接 Lumina" : "独立模式" + why;
+    el.title = connected ? "已与宿主建立 MessagePort 通道" : (host.lastError || "未连接宿主：选图与交接不可用");
     el.className = "badge " + (connected ? "ok" : "warn");
     syncHandoff();
   }
