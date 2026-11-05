@@ -99,13 +99,50 @@ body[data-view="src"] #stage,body[data-view="dst"] #stage{grid-template-columns:
 .viewsw button{padding:3px 9px; border:0; background:transparent; color:var(--muted); border-radius:5px}
 .viewsw button[aria-pressed="true"]{background:#2f3a4a; color:#cfe4ff}
 #hist{width:100%; height:64px; display:block; border:1px solid var(--line); border-radius:6px; background:#101114; cursor:ew-resize}
-.lrow{display:grid; grid-template-columns:64px 1fr 52px 52px; gap:4px; align-items:center; margin:4px 0}
+.lrow{display:grid; grid-template-columns:58px minmax(0,1fr) 48px 40px; gap:4px; align-items:center; margin:4px 0}
+.lrow > *{min-width:0}
+.lrow input[type=number]{width:100%}
+.lrow .rng{display:flex; gap:3px; align-items:center}
+.lrow .rng input{flex:1; min-width:0; width:auto !important}
 .lrow.sel{outline:1px solid #4a6b8f; border-radius:6px; padding:2px}
 .lrow select,.lrow input{font-size:11px; padding:2px 3px}
 .lrow .mini{padding:1px 4px; font-size:11px}
 #cv3d{position:absolute; inset:0; width:100%; height:100%; max-width:none; max-height:none;
   cursor:grab; touch-action:none; image-rendering:auto}
 #cv3d.drag{cursor:grabbing}
+#stage{position:relative}
+#welcome{position:absolute; inset:10px; z-index:2; display:flex; align-items:center; justify-content:center;
+  background:#0f1012; border:1px dashed #4a4f57; border-radius:8px}
+#welcome.over{border-color:var(--accent); background:#121a24}
+body.hasimg #welcome{display:none}
+.wbox{max-width:560px; padding:24px; text-align:center}
+.wbox h2{font-size:18px; margin:0 0 18px; font-weight:600}
+.flow{list-style:none; display:flex; gap:10px; padding:0; margin:0 0 20px}
+.flow li{flex:1; display:flex; flex-direction:column; align-items:center; gap:3px; padding:12px 8px;
+  background:var(--panel2); border:1px solid var(--line); border-radius:8px}
+.flow b{width:22px; height:22px; border-radius:50%; background:#2f3a4a; color:#cfe4ff; font-size:12px;
+  display:flex; align-items:center; justify-content:center}
+.flow span{font-weight:600}
+.flow small{color:var(--muted); font-size:11px}
+.wbtns{display:flex; gap:8px; justify-content:center; margin-bottom:8px}
+.wbtns button{padding:7px 16px}
+body:not(.hasimg) aside{opacity:.45; pointer-events:none}
+.seg{display:flex; gap:4px; margin:2px 0 8px}
+.seg button{flex:1; display:flex; flex-direction:column; align-items:center; padding:6px 4px; background:#1a1c1f}
+.seg button small{color:var(--muted); font-size:10.5px}
+.seg button[aria-pressed="true"]{background:#2f3a4a; border-color:#4a6b8f; color:#cfe4ff}
+.axis{display:flex; justify-content:space-between; font-size:10.5px; color:var(--muted); margin:2px 1px 0}
+.levels{display:grid; grid-template-columns:auto 1fr auto 1fr auto; gap:6px; align-items:center; margin:8px 0 0}
+.levels label{color:var(--muted); font-size:12px}
+.levels .unit{display:flex; align-items:center; gap:3px; color:var(--muted)}
+.levels .unit input{width:100%; min-width:0}
+.sizecard{background:#1a1c1f; border:1px solid var(--line); border-radius:6px; padding:6px 8px; margin:6px 0}
+.sizecard div{display:flex; justify-content:space-between; gap:8px; font-size:12px; font-variant-numeric:tabular-nums}
+.sizecard .k{color:var(--muted)}
+details{margin-top:8px}
+summary{cursor:pointer; color:var(--muted); font-size:12px}
+button.ghost{background:transparent}
+.lhead{font-size:10.5px; color:var(--muted); margin-bottom:0}
 .legend{position:absolute; left:8px; right:8px; bottom:8px; display:flex; justify-content:space-between;
   align-items:center; gap:8px; font-size:11px; color:var(--muted); pointer-events:none}
 .legend > span:first-child{background:#0009; border:1px solid var(--line); border-radius:6px; padding:1px 7px}
@@ -132,11 +169,26 @@ body[data-view="src"] #stage,body[data-view="dst"] #stage{grid-template-columns:
   </div>
   <button id="btnPick">载入图片</button>
   <button id="btnDemo">示例</button>
-  <button id="btnHandoff" class="primary" disabled>交给 Lumina</button>
+  <button id="btnHandoff" class="primary" disabled title="把高度图送进 Lumina 的转换器，继续做成浮雕或拼豆">交给 Lumina</button>
 </header>
 
 <main>
   <section id="stage">
+    <div id="welcome">
+      <div class="wbox">
+        <h2>把一张图片变成可以打印的浮雕</h2>
+        <ol class="flow">
+          <li><b>1</b><span>放入图片</span><small>拖进来、粘贴，或点下面的按钮</small></li>
+          <li><b>2</b><span>调整高低</span><small>越亮越高，右侧实时出 3D 预览</small></li>
+          <li><b>3</b><span>交给 Lumina</span><small>在转换器里做成浮雕或拼豆</small></li>
+        </ol>
+        <div class="wbtns">
+          <button class="primary" id="btnPick2">载入图片</button>
+          <button id="btnDemo2">先看个示例</button>
+        </div>
+        <p class="hint">图片只在本地处理，不会上传。</p>
+      </div>
+    </div>
     <div class="pane src">
       <span class="tag" id="tagSrc">原图</span>
       <div class="empty" id="emptySrc">尚未载入图片<br>点右上角「载入图片」</div>
@@ -156,25 +208,36 @@ body[data-view="src"] #stage,body[data-view="dst"] #stage{grid-template-columns:
 
   <aside>
     <fieldset>
-      <legend>① 图像</legend>
-      <div class="hint" id="imgInfo">尚未载入图片</div>
+      <legend>① 做什么（一键起步）</legend>
+      <div class="presets" id="presets">
+        <button data-preset="badge" title="边缘清晰、层次分明，适合 Logo / 文字浮雕">硬币徽章</button>
+        <button data-preset="terrain" title="大起伏 + 柔和过渡，适合山体 / 等高">地形</button>
+        <button data-preset="detail" title="拉开细小纹理，适合照片浮雕">细节增强</button>
+        <button data-preset="smooth" title="去掉噪点，适合拼豆或大块面">柔和平滑</button>
+        <button data-preset="default" class="ghost">全部重置</button>
+      </div>
+      <p class="hint">先选一个最接近的，再往下微调。右侧立体预览会实时变化。</p>
     </fieldset>
 
     <fieldset>
-      <legend>② 高度来源（像素的哪一部分算高）</legend>
+      <legend>② 用图像的哪一部分当高度</legend>
       <div class="row">
         <label>来源</label>
         <select id="selSource">
-          <option value="luma">亮度（Rec.709 感知）</option>
-          <option value="luma_linear">亮度（线性光）</option>
-          <option value="average">RGB 平均</option>
-          <option value="max">最大通道</option>
-          <option value="red">红通道</option>
-          <option value="green">绿通道</option>
-          <option value="blue">蓝通道</option>
-          <option value="alpha">透明度</option>
-          <option value="saturation">饱和度</option>
-          <option value="color_distance">颜色距离（选区 = 最高点）</option>
+          <optgroup label="常用">
+            <option value="luma">亮度：越亮越高</option>
+            <option value="color_distance">颜色选区：点原图选色，选中处最高</option>
+            <option value="alpha">透明度：不透明处最高</option>
+          </optgroup>
+          <optgroup label="更多">
+            <option value="luma_linear">亮度（线性光，暗部更低）</option>
+            <option value="average">RGB 平均</option>
+            <option value="max">最大通道</option>
+            <option value="red">红通道</option>
+            <option value="green">绿通道</option>
+            <option value="blue">蓝通道</option>
+            <option value="saturation">饱和度：越鲜艳越高</option>
+          </optgroup>
         </select>
       </div>
       <div class="row" id="rowColor" hidden>
@@ -184,53 +247,82 @@ body[data-view="src"] #stage,body[data-view="dst"] #stage{grid-template-columns:
         <input type="range" id="rngTol" min="0.02" max="1" step="0.01" value="0.25">
         <span class="val" id="valTol">0.25</span>
       </div>
-      <p class="hint" id="hintPick">颜色距离模式下，点原图任意位置即可取色；选区=最高点，其余=最低点。</p>
+      <p class="hint" id="hintPick">点左边原图上的任意位置取色：和它颜色越接近的地方越高。</p>
     </fieldset>
 
     <fieldset>
-      <legend>③ 高低映射 · 输入（哪些像素 = 最低/最高）</legend>
-      <canvas id="hist" width="480" height="128" title="左竖线=最低点（黑），右竖线=最高点（白）；拖动竖线可改"></canvas>
-      <div class="row">
+      <legend>③ 哪些算最低、哪些算最高</legend>
+      <canvas id="hist" width="480" height="128" title="拖动黄线 = 最低点，拖动白线 = 最高点"></canvas>
+      <div class="axis"><span>暗</span><span>图中各亮度的像素多少</span><span>亮</span></div>
+      <div class="levels">
         <label>最低点</label>
-        <input type="number" id="numInLo" min="0" max="100" step="0.5" value="0" style="width:64px"> %
-        <label style="width:auto">最高点</label>
-        <input type="number" id="numInHi" min="0" max="100" step="0.5" value="100" style="width:64px"> %
-        <button id="btnAuto" class="mini">自动色阶</button>
+        <span class="unit"><input type="number" id="numInLo" min="0" max="100" step="0.5" value="0">%</span>
+        <label>最高点</label>
+        <span class="unit"><input type="number" id="numInHi" min="0" max="100" step="0.5" value="100">%</span>
+        <button id="btnAuto" class="mini" title="忽略两端 0.5% 的极端像素，自动拉满高度范围">自动</button>
       </div>
-      <p class="hint">左竖线 = 最低点（黑）：亮度低于它的像素全部算最低；右竖线 = 最高点（白）：高于它的全部算最高。越白越高，越黑越低。</p>
+      <p class="hint">黄线左边全部贴底，白线右边全部顶到最高；两线之间按亮度渐变。</p>
     </fieldset>
 
     <fieldset>
-      <legend>④ 中间调与细节</legend>
-      <div class="row"><label>Gamma</label>
-        <input type="range" id="rngGamma" min="0.2" max="3" step="0.01" value="1">
-        <span class="val" id="valGamma">1.00</span></div>
-      <div class="row"><label>对比（S 曲线）</label>
-        <input type="range" id="rngContrast" min="0.2" max="3" step="0.01" value="1.2">
-        <span class="val" id="valContrast">1.20</span></div>
-      <div class="row"><label>平滑（模糊）</label>
-        <input type="range" id="rngBlur" min="0" max="8" step="0.1" value="0.5">
+      <legend>④ 高度怎么变化</legend>
+      <div class="seg" role="group" aria-label="高度变化方式">
+        <button id="btnModeSmooth" aria-pressed="true">平滑渐变<small>像雕刻、照片浮雕</small></button>
+        <button id="btnModeStep" aria-pressed="false">分层台阶<small>像印章、拼豆分色</small></button>
+      </div>
+      <input type="checkbox" id="chkLayers" hidden>
+
+      <div id="grpSmooth">
+        <div class="row"><label>中间调</label>
+          <input type="range" id="rngGamma" min="0.2" max="3" step="0.01" value="1" title="Gamma：小于 1 抬高中间调，大于 1 压低">
+          <span class="val" id="valGamma">1.00</span></div>
+        <div class="row"><label>对比</label>
+          <input type="range" id="rngContrast" min="0.2" max="3" step="0.01" value="1.2" title="S 曲线：越大高低落差越陡">
+          <span class="val" id="valContrast">1.20</span></div>
+      </div>
+
+      <div id="grpStep" hidden>
+        <div class="row"><label>层数</label>
+          <input type="number" id="numLayerCount" min="2" max="8" step="1" value="3" style="width:56px">
+          <button id="btnLayerEven" class="mini">重新等分</button>
+        </div>
+        <canvas id="strip" width="480" height="120" title="点色块选中；块内上下拖 = 改高度；拖分界线 = 改区间"></canvas>
+        <div class="lrow lhead"><span>按</span><span>亮度区间 %</span><span>高度 %</span><span>羽化</span></div>
+        <div id="layerRows"></div>
+        <p class="hint">每一块是一层：横向范围 = 哪段亮度属于这层，块的高矮 = 这层的高度。上下拖块改高度，拖分界线改范围。</p>
+        <p class="hint" id="hintCurves" hidden>这种方式下「中间调 / 对比」不参与；③ 的黄线白线仍决定各层对应的亮度范围。</p>
+      </div>
+
+      <div class="row"><label>平滑</label>
+        <input type="range" id="rngBlur" min="0" max="8" step="0.1" value="0.5" title="高斯模糊半径：去噪点、柔化边缘">
         <span class="val" id="valBlur">0.5</span></div>
-      <div class="row"><label style="width:auto">反相（黑→白）</label>
-        <input type="checkbox" id="chkInvert"></div>
-      <p class="hint" id="hintCurves" hidden>台阶化已开启：Gamma 与对比不参与，高度由分层决定（色阶仍决定区间位置）。</p>
+      <div class="row"><label>反过来</label>
+        <input type="checkbox" id="chkInvert"><span class="hint" style="margin:0">勾选后暗处变高（适合印章、凹刻）</span></div>
     </fieldset>
 
     <fieldset>
-      <legend>⑤ 输出量程（最低点/最高点落到的高度）</legend>
-      <div class="row"><label>输出下限</label>
-        <input type="range" id="rngOutLo" min="0" max="1" step="0.01" value="0">
-        <span class="val" id="valOutLo">0%</span></div>
-      <div class="row"><label>输出上限</label>
-        <input type="range" id="rngOutHi" min="0" max="1" step="0.01" value="1">
-        <span class="val" id="valOutHi">100%</span></div>
-      <div class="row"><label style="width:auto">物理高度上限</label>
+      <legend>⑤ 尺寸与交接</legend>
+      <div class="row"><label>物理高度</label>
         <input type="number" id="numPhys" min="0.1" max="1000" step="0.1" value="10" style="width:70px">
-        <select id="selUnit" style="width:64px">
+        <select id="selUnit" style="flex:none; width:64px">
           <option value="mm">mm</option><option value="cm">cm</option><option value="in">in</option>
         </select>
       </div>
-      <p class="hint">物理高度只影响「交给 Lumina」的毫米尺寸与 OBJ，不改灰度值。</p>
+      <div class="sizecard" id="sizeCard">
+        <div><span class="k">图像</span><span id="imgInfo">尚未载入</span></div>
+        <div><span class="k">交给 Lumina</span><span id="sizeInfo">—</span></div>
+      </div>
+      <p class="hint">「交给 Lumina」把灰度高度图送进 Lumina 的转换器，在那里继续做成浮雕或拼豆；物理高度只影响交接的毫米尺寸与 OBJ，不改灰度。</p>
+      <details>
+        <summary>高级：输出量程</summary>
+        <div class="row"><label>最低处抬到</label>
+          <input type="range" id="rngOutLo" min="0" max="1" step="0.01" value="0">
+          <span class="val" id="valOutLo">0%</span></div>
+        <div class="row"><label>最高处压到</label>
+          <input type="range" id="rngOutHi" min="0" max="1" step="0.01" value="1">
+          <span class="val" id="valOutHi">100%</span></div>
+        <p class="hint">想保留一层底板，就把「最低处」抬高一点。</p>
+      </details>
     </fieldset>
 
     <fieldset>
@@ -257,35 +349,11 @@ body[data-view="src"] #stage,body[data-view="dst"] #stage{grid-template-columns:
         <input type="checkbox" id="chkFlip"></div>
       <p class="hint" id="hintRelief">立体预览只用于观察起伏，「起伏夸张」不改变交给 Lumina 的高度图。</p>
     </fieldset>
-
-    <fieldset>
-      <legend>⑦ 台阶化（按亮度分层）</legend>
-      <div class="row"><label style="width:auto">启用台阶化</label>
-        <input type="checkbox" id="chkLayers">
-        <label style="width:auto">层数</label>
-        <input type="number" id="numLayerCount" min="2" max="8" step="1" value="3" style="width:56px">
-        <button id="btnLayerEven" class="mini">等分模板</button>
-      </div>
-      <canvas id="strip" width="480" height="120" title="点色块选中；块内上下拖 = 改高度；贴近分界线左右拖 = 改区间"></canvas>
-      <div id="layerRows"></div>
-      <p class="hint">高度 0 = 最低点（黑），1 = 最高点（白）。亮度层按覆盖权重归一化平均——羽化越大边界越平滑。开启后 Gamma / 对比不参与，色阶仍决定区间位置。</p>
-    </fieldset>
-
-    <fieldset>
-      <legend>⑧ 预设</legend>
-      <div class="presets" id="presets">
-        <button data-preset="badge">硬币徽章</button>
-        <button data-preset="terrain">地形</button>
-        <button data-preset="detail">细节增强</button>
-        <button data-preset="smooth">柔和平滑</button>
-        <button data-preset="default">全部重置</button>
-      </div>
-    </fieldset>
   </aside>
 </main>
 
 <footer>
-  <span class="mono" id="statRange">未载入</span>
+  <span class="mono" id="statRange">还没有图片 · 可以直接把图片拖进窗口</span>
   <span class="spacer" style="flex:1"></span>
   <!-- 工坊沙箱里没有 allow-downloads，独立导出收起并说明支持范围；独立打开时照常可用 -->
   <span id="exportNote" hidden style="color:var(--muted); font-size:12px; max-width:620px"></span>
@@ -1409,9 +1477,13 @@ async function connectWorkshop(options) {
     state.handoffPending = false;
   }
 
-  /** 台阶化开启时 Gamma / 对比不参与：禁用这两条滑杆并显示说明。 */
+  /** 「平滑渐变 / 分层台阶」二选一：只展开当前方式的参数（台阶化时 Gamma / 对比不参与）。 */
   function syncCurveEnable() {
     const banded = !!(state.layersOn && state.layers.length);
+    $("grpSmooth").hidden = banded;
+    $("grpStep").hidden = !banded;
+    $("btnModeSmooth").setAttribute("aria-pressed", String(!banded));
+    $("btnModeStep").setAttribute("aria-pressed", String(banded));
     for (const el of [ui.rngGamma, ui.rngContrast]) if (el) el.disabled = banded;
     const note = $("hintCurves");
     if (note) note.hidden = !banded;
@@ -1655,7 +1727,7 @@ async function connectWorkshop(options) {
       row.className = "lrow" + (state.selLayer === i ? " sel" : "");
 
       const sel = document.createElement("select");
-      for (const [v, t] of [["band", "亮度区间"], ["color", "颜色选区"]]) {
+      for (const [v, t] of [["band", "亮度"], ["color", "颜色"]]) {
         const o = document.createElement("option");
         o.value = v; o.textContent = t;
         sel.appendChild(o);
@@ -1669,8 +1741,7 @@ async function connectWorkshop(options) {
       sel.addEventListener("focus", () => { state.selLayer = i; });
 
       const range = document.createElement("div");
-      range.style.display = "flex";
-      range.style.gap = "4px";
+      range.className = "rng";
       if (L.mode === "band") {
         const lo = document.createElement("input");
         lo.type = "number"; lo.min = "0"; lo.max = "100"; lo.step = "1";
@@ -1693,7 +1764,7 @@ async function connectWorkshop(options) {
         const note = document.createElement("span");
         note.style.fontSize = "11px";
         note.style.color = "var(--muted)";
-        note.textContent = "用面板 ② 的颜色";
+        note.textContent = "用 ② 选的颜色";
         range.append(note);
       }
 
@@ -1720,6 +1791,14 @@ async function connectWorkshop(options) {
       state.rowNodes[i] = node;
     });
   }
+
+  function setMode(step) {
+    if (ui.chkLayers.checked === step) return;
+    ui.chkLayers.checked = step;
+    ui.chkLayers.dispatchEvent(new Event("change"));
+  }
+  $("btnModeSmooth").addEventListener("click", () => setMode(false));
+  $("btnModeStep").addEventListener("click", () => setMode(true));
 
   ui.chkLayers.addEventListener("change", () => {
     state.layersOn = ui.chkLayers.checked;
@@ -2175,8 +2254,14 @@ void main(){
     }
 
     const st = E.stats(field);
-    ui.statRange.textContent =
+    const ph = physSize();
+    const flat = st.max - st.min < 0.02;
+    ui.statRange.textContent = flat
+      ? "⚠ 几乎没有高低差：试试「自动」色阶，或换一个高度来源"
+      : `高度用到 ${Math.round(st.min * 100)}%–${Math.round(st.max * 100)}% · 交接尺寸约 ${fmtMm(ph.wMm)} × ${fmtMm(ph.hMm)} mm`;
+    ui.statRange.title =
       `${w}×${h} · ${Math.round(performance.now() - t0)} ms · min ${st.min.toFixed(3)} · max ${st.max.toFixed(3)} · mean ${st.mean.toFixed(3)}`;
+    $("sizeInfo").textContent = `${fmtMm(ph.wMm)} × ${fmtMm(ph.hMm)} mm · PNG`;
     updateHist();
     // 首次算出高度图后这里才置 state.field —— 交接按钮必须在这里同步，否则第一次载图不可点
     syncHandoff();
@@ -2196,6 +2281,7 @@ void main(){
     state.height = h;
     state.dirty = true;
     cvSrc.hidden = false;
+    document.body.classList.add("hasimg");
     $("emptySrc").hidden = true;
     $("emptyDst").hidden = true;
     $("tagSrc").textContent = "原图 · " + w + "×" + h;
@@ -2259,10 +2345,17 @@ void main(){
     return null;
   }
 
+  // 欢迎页：两个按钮转给顶栏同名按钮；拖进来时高亮
+  $("btnPick2").addEventListener("click", () => ui.btnPick.click());
+  $("btnDemo2").addEventListener("click", () => ui.btnDemo.click());
+  const welcome = $("welcome");
+
   // 拖放 / 粘贴
-  window.addEventListener("dragover", (e) => { e.preventDefault(); });
+  window.addEventListener("dragover", (e) => { e.preventDefault(); welcome.classList.add("over"); });
+  window.addEventListener("dragleave", (e) => { if (!e.relatedTarget) welcome.classList.remove("over"); });
   window.addEventListener("drop", (e) => {
     e.preventDefault();
+    welcome.classList.remove("over");
     const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
     if (f) loadBlob(f);
   });
@@ -2319,6 +2412,8 @@ void main(){
     const wMm = (mm * state.width) / Math.max(1, state.height);
     return { wMm, hMm };
   }
+
+  function fmtMm(v) { return v >= 100 ? String(Math.round(v)) : (Math.round(v * 10) / 10).toFixed(1); }
 
   function metaText() {
     const st = state.field ? E.stats(state.field) : { min: 0, max: 0, mean: 0 };
@@ -2428,6 +2523,7 @@ void main(){
     if (!btn) return;
     const preset = PRESETS[btn.dataset.preset];
     if (preset) Object.assign(state.params, preset);
+    if (btn.dataset.preset === "default") setMode(false);
     writeUI(); schedule();
   });
 
