@@ -103,6 +103,16 @@ body[data-view="src"] #stage,body[data-view="dst"] #stage{grid-template-columns:
 .lrow.sel{outline:1px solid #4a6b8f; border-radius:6px; padding:2px}
 .lrow select,.lrow input{font-size:11px; padding:2px 3px}
 .lrow .mini{padding:1px 4px; font-size:11px}
+#cv3d{position:absolute; inset:0; width:100%; height:100%; max-width:none; max-height:none;
+  cursor:grab; touch-action:none; image-rendering:auto}
+#cv3d.drag{cursor:grabbing}
+.legend{position:absolute; left:8px; right:8px; bottom:8px; display:flex; justify-content:space-between;
+  align-items:center; gap:8px; font-size:11px; color:var(--muted); pointer-events:none}
+.legend > span:first-child{background:#0009; border:1px solid var(--line); border-radius:6px; padding:1px 7px}
+.legend .ramp{display:flex; align-items:center; gap:5px; background:#0009; border:1px solid var(--line);
+  border-radius:6px; padding:2px 7px}
+.legend .ramp i{font-style:normal}
+.legend .ramp b{display:block; width:72px; height:8px; border-radius:3px; background:linear-gradient(90deg,#000,#fff)}
 #toast{position:fixed; left:50%; bottom:52px; transform:translateX(-50%); background:#3a2a2a;
   color:#ffd9d9; border:1px solid #6b3a3a; padding:6px 12px; border-radius:8px; font-size:12px;
   opacity:0; pointer-events:none; transition:opacity .18s}
@@ -127,15 +137,20 @@ body[data-view="src"] #stage,body[data-view="dst"] #stage{grid-template-columns:
 
 <main>
   <section id="stage">
-    <div class="pane">
+    <div class="pane src">
       <span class="tag" id="tagSrc">原图</span>
       <div class="empty" id="emptySrc">尚未载入图片<br>点右上角「载入图片」</div>
       <canvas id="cvSrc" hidden></canvas>
     </div>
-    <div class="pane">
-      <span class="tag" id="tagDst">高度图</span>
-      <div class="empty" id="emptyDst">白 = 最高点，黑 = 最低点</div>
+    <div class="pane dst">
+      <span class="tag" id="tagDst">立体预览</span>
+      <div class="empty" id="emptyDst">载入图片后，这里会把它立起来：<br>越白的地方越高，越黑的地方越低</div>
       <canvas id="cvDst" hidden></canvas>
+      <canvas id="cv3d" hidden title="拖动旋转 · 滚轮缩放 · 双击复位"></canvas>
+      <div class="legend" id="legend3d" hidden>
+        <span>拖动旋转 · 滚轮缩放 · 双击复位</span>
+        <span class="ramp"><i>低</i><b></b><i>高</i></span>
+      </div>
     </div>
   </section>
 
@@ -222,14 +237,25 @@ body[data-view="src"] #stage,body[data-view="dst"] #stage{grid-template-columns:
       <legend>⑥ 预览样式</legend>
       <div class="row"><label>样式</label>
         <select id="selPreview">
-          <option value="gray">灰度高度图</option>
+          <option value="relief">立体浮雕（可旋转）</option>
           <option value="shaded">山体着色</option>
+          <option value="gray">灰度高度图（交接/导出的原样）</option>
           <option value="normal">法线图</option>
-        </select>
+        </select></div>
+      <div class="row" id="rowRelief"><label>起伏夸张</label>
+        <input type="range" id="rngRelief" min="0.25" max="4" step="0.05" value="1">
+        <span class="val" id="valRelief">×1.0</span></div>
+      <div class="row" id="rowSurface"><label>表面</label>
+        <select id="selSurface">
+          <option value="material">单色材质（看形状）</option>
+          <option value="image">原图颜色（看对位）</option>
+        </select></div>
+      <div class="row" id="rowNorm" hidden><label>法线强度</label>
         <input type="range" id="rngNorm" min="0.2" max="4" step="0.1" value="1">
         <span class="val" id="valNorm">1.0</span></div>
-      <div class="row"><label style="width:auto">法线绿通道翻转</label>
+      <div class="row" id="rowFlip" hidden><label style="width:auto">法线绿通道翻转</label>
         <input type="checkbox" id="chkFlip"></div>
+      <p class="hint" id="hintRelief">立体预览只用于观察起伏，「起伏夸张」不改变交给 Lumina 的高度图。</p>
     </fieldset>
 
     <fieldset>
@@ -1007,6 +1033,109 @@ async function connectWorkshop(options) {
     return rgba;
   }
 
+  /**
+   * 立体浮雕预览用的网格（纯函数，供 WebGL 查看器上传）。
+   * 顶面：把高度场降采样到长边 ≤ maxGrid 的网格，z = 高度 × relief；
+   * 四周再围一圈到 z = -base 的侧壁，让它看起来像一块真实的浮雕板，而不是一张贴图。
+   * 坐标：长边归一到 2（中心在原点），x 向右、y 向上（图像第 0 行在 +y），z 向上。
+   * colors 为 null 时用统一材质色；传 rgba（与 field 同尺寸）则顶面取原图颜色。
+   */
+  function reliefMesh(field, w, h, opts = {}) {
+    const maxGrid = Math.max(2, opts.maxGrid || 320);
+    const relief = opts.relief === undefined ? 0.12 : opts.relief;
+    const base = opts.base === undefined ? 0.05 : opts.base;
+    const rgba = opts.rgba || null;
+    const mat = opts.material || [0.86, 0.82, 0.76];
+    const side = opts.sideColor || [0.42, 0.40, 0.37];
+    const s = Math.min(1, maxGrid / Math.max(w, h));
+    const gw = Math.max(2, Math.round(w * s)), gh = Math.max(2, Math.round(h * s));
+    const L = Math.max(w, h);
+    const sx = (2 * w) / L, sy = (2 * h) / L;
+    const dx = sx / (gw - 1), dy = sy / (gh - 1);
+
+    // 降采样：每个网格点取覆盖区域的均值，避免细笔画在网格上闪烁
+    const zg = new Float32Array(gw * gh);
+    const cg = rgba ? new Float32Array(gw * gh * 3) : null;
+    for (let j = 0; j < gh; j++) {
+      const y0 = Math.floor((j / gh) * h), y1 = Math.max(y0 + 1, Math.floor(((j + 1) / gh) * h));
+      for (let i = 0; i < gw; i++) {
+        const x0 = Math.floor((i / gw) * w), x1 = Math.max(x0 + 1, Math.floor(((i + 1) / gw) * w));
+        let acc = 0, r = 0, g = 0, b = 0, n = 0;
+        for (let y = y0; y < y1 && y < h; y++) {
+          for (let x = x0; x < x1 && x < w; x++) {
+            const k = y * w + x;
+            acc += field[k];
+            if (rgba) { r += rgba[k * 4]; g += rgba[k * 4 + 1]; b += rgba[k * 4 + 2]; }
+            n++;
+          }
+        }
+        const q = j * gw + i;
+        zg[q] = (n ? acc / n : 0) * relief;
+        if (cg) { cg[q * 3] = r / n / 255; cg[q * 3 + 1] = g / n / 255; cg[q * 3 + 2] = b / n / 255; }
+      }
+    }
+
+    const nTop = gw * gh;
+    const nRim = 2 * (gw - 1) + 2 * (gh - 1);   // 周长上的点数（首尾不重复）
+    const nSide = (nRim + 4) * 2;                // 每条边单独一组顶点（法线朝外），角点重复
+    const nv = nTop + nSide;
+    const pos = new Float32Array(nv * 3), nor = new Float32Array(nv * 3), col = new Float32Array(nv * 3);
+    const at = (i, j) => zg[Math.min(gh - 1, Math.max(0, j)) * gw + Math.min(gw - 1, Math.max(0, i))];
+    for (let j = 0; j < gh; j++) {
+      for (let i = 0; i < gw; i++) {
+        const q = j * gw + i, p = q * 3;
+        pos[p] = -sx / 2 + i * dx;
+        pos[p + 1] = sy / 2 - j * dy;
+        pos[p + 2] = zg[q];
+        const gx = (at(i + 1, j) - at(i - 1, j)) / (2 * dx);
+        const gy = (at(i, j - 1) - at(i, j + 1)) / (2 * dy); // j 增大 = y 减小
+        const len = Math.hypot(gx, gy, 1);
+        nor[p] = -gx / len; nor[p + 1] = -gy / len; nor[p + 2] = 1 / len;
+        if (cg) { col[p] = cg[q * 3]; col[p + 1] = cg[q * 3 + 1]; col[p + 2] = cg[q * 3 + 2]; }
+        else { col[p] = mat[0]; col[p + 1] = mat[1]; col[p + 2] = mat[2]; }
+      }
+    }
+
+    const quads = (gw - 1) * (gh - 1) + nRim;
+    const idx = new Uint32Array(quads * 6);
+    let t = 0;
+    for (let j = 0; j < gh - 1; j++) {
+      for (let i = 0; i < gw - 1; i++) {
+        const a = j * gw + i, b = a + 1, c = a + gw, d = c + 1;
+        idx[t++] = a; idx[t++] = c; idx[t++] = b;
+        idx[t++] = b; idx[t++] = c; idx[t++] = d;
+      }
+    }
+
+    // 侧壁：上 / 右 / 下 / 左 四条边，按逆时针走（从外面看是正面）
+    let v = nTop;
+    const edges = [
+      { n: [0, 1, 0], pts: Array.from({ length: gw }, (_, i) => [gw - 1 - i, 0]) },
+      { n: [1, 0, 0], pts: Array.from({ length: gh }, (_, j) => [gw - 1, gh - 1 - j]) },
+      { n: [0, -1, 0], pts: Array.from({ length: gw }, (_, i) => [i, gh - 1]) },
+      { n: [-1, 0, 0], pts: Array.from({ length: gh }, (_, j) => [0, j]) },
+    ];
+    for (const e of edges) {
+      const start = v;
+      for (const [i, j] of e.pts) {
+        const q = (j * gw + i) * 3;
+        for (const z of [pos[q + 2], -base]) {
+          const p = v * 3;
+          pos[p] = pos[q]; pos[p + 1] = pos[q + 1]; pos[p + 2] = z;
+          nor[p] = e.n[0]; nor[p + 1] = e.n[1]; nor[p + 2] = e.n[2];
+          col[p] = side[0]; col[p + 1] = side[1]; col[p + 2] = side[2];
+          v++;
+        }
+      }
+      for (let k = 0; k < e.pts.length - 1; k++) {
+        const top0 = start + k * 2, bot0 = top0 + 1, top1 = top0 + 2, bot1 = top0 + 3;
+        idx[t++] = top0; idx[t++] = bot0; idx[t++] = top1;
+        idx[t++] = top1; idx[t++] = bot0; idx[t++] = bot1;
+      }
+    }
+    return { positions: pos, normals: nor, colors: col, indices: idx, gw, gh, sx, sy, relief, base };
+  }
+
   /** 山体着色预览：高度决定色带，坡度决定明暗（近似桌面版的「山体着色」）。 */
   function shadeRGBA(field, w, h) {
     const rgba = new Uint8ClampedArray(w * h * 4);
@@ -1168,7 +1297,7 @@ async function connectWorkshop(options) {
   global.HeightForgeEngine = {
     extractSource, blurField, mapField, stats, fieldToRGBA,
     encodePng16, smoothstep, clamp01, crc32, adler32,
-    histogram, autoLevels, applyLayers, normalRGBA, shadeRGBA,
+    histogram, autoLevels, applyLayers, normalRGBA, shadeRGBA, reliefMesh,
     encodePngGray, encodePngRgb, buildObj,
     stripEdges, stripHit, clampEdge,
     mapFieldBanded, handoffOutcome, handoffUiState, exportScope,
@@ -1303,6 +1432,9 @@ async function connectWorkshop(options) {
     rngOutHi: $("rngOutHi"), valOutHi: $("valOutHi"),
     numPhys: $("numPhys"), selUnit: $("selUnit"),
     selPreview: $("selPreview"), rngNorm: $("rngNorm"), valNorm: $("valNorm"), chkFlip: $("chkFlip"),
+    rngRelief: $("rngRelief"), valRelief: $("valRelief"), selSurface: $("selSurface"),
+    rowRelief: $("rowRelief"), rowSurface: $("rowSurface"), rowNorm: $("rowNorm"), rowFlip: $("rowFlip"),
+    hintRelief: $("hintRelief"), cv3d: $("cv3d"), legend3d: $("legend3d"),
     chkLayers: $("chkLayers"), numLayerCount: $("numLayerCount"),
     btnLayerEven: $("btnLayerEven"), layerRows: $("layerRows"),
     strip: $("strip"),
@@ -1314,7 +1446,7 @@ async function connectWorkshop(options) {
 
   /** 新面板引入的状态（补齐默认值，避免 readUI/render 读到 undefined）。 */
   Object.assign(state, {
-    view: "split", preview: "gray", hist: null, layers: [], layersOn: false,
+    view: "split", preview: "relief", reliefScale: 1, surface: "material", hist: null, layers: [], layersOn: false,
     selLayer: 0, normStrength: 1, flipGreen: false, phys: 10, unit: "mm",
     drag: null, hoverEdge: -1, rowNodes: [],
     // 交接：同一个 projectId 复用到「确认替换」，pending 表示宿主正在等第二次点击
@@ -1361,6 +1493,9 @@ async function connectWorkshop(options) {
     p.outHi = parseFloat(ui.rngOutHi.value);
     state.preview = ui.selPreview.value;
     state.normStrength = parseFloat(ui.rngNorm.value);
+    state.reliefScale = parseFloat(ui.rngRelief.value);
+    state.surface = ui.selSurface.value;
+    syncPreviewRows();
     state.flipGreen = ui.chkFlip.checked;
     state.layersOn = ui.chkLayers.checked;
     state.phys = parseFloat(ui.numPhys.value) || 10;
@@ -1393,6 +1528,8 @@ async function connectWorkshop(options) {
     ui.valOutLo.textContent = Math.round(p.outLo * 100) + "%";
     ui.rngOutHi.value = String(p.outHi);
     ui.valOutHi.textContent = Math.round(p.outHi * 100) + "%";
+    ui.valRelief.textContent = "×" + Number(state.reliefScale).toFixed(1);
+    ui.valNorm.textContent = Number(state.normStrength).toFixed(1);
     ui.rowColor.hidden = p.source !== "color_distance";
     ui.hintPick.hidden = p.source !== "color_distance";
   }
@@ -1403,7 +1540,7 @@ async function connectWorkshop(options) {
     writeUI();
     schedule();
   }
-  for (const el of [ui.rngTol, ui.rngGamma, ui.rngContrast, ui.rngBlur, ui.rngOutLo, ui.rngOutHi, ui.rngNorm]) {
+  for (const el of [ui.rngTol, ui.rngGamma, ui.rngContrast, ui.rngBlur, ui.rngOutLo, ui.rngOutHi, ui.rngNorm, ui.rngRelief]) {
     el.addEventListener("input", onParamChange);
   }
   for (const el of [ui.numInLo, ui.numInHi]) {
@@ -1415,7 +1552,7 @@ async function connectWorkshop(options) {
       writeUI(); schedule();
     });
   }
-  for (const el of [ui.chkInvert, ui.chkFlip, ui.selPreview, ui.selUnit, ui.numPhys]) {
+  for (const el of [ui.chkInvert, ui.chkFlip, ui.selPreview, ui.selSurface, ui.selUnit, ui.numPhys]) {
     el.addEventListener("change", onParamChange);
   }
   ui.selSource.addEventListener("change", () => { readUI(); writeUI(); updateHist(); schedule(); });
@@ -1759,6 +1896,226 @@ async function connectWorkshop(options) {
   ui.strip.addEventListener("pointerup", endStripDrag);
   ui.strip.addEventListener("pointercancel", endStripDrag);
 
+  // ---------------- 立体浮雕预览（WebGL，无外部依赖） ----------------
+  /** 只显示当前预览样式需要的那几行参数。 */
+  function syncPreviewRows() {
+    const m = ui.selPreview.value;
+    ui.rowRelief.hidden = m !== "relief";
+    ui.rowSurface.hidden = m !== "relief";
+    ui.hintRelief.hidden = m !== "relief";
+    ui.rowNorm.hidden = m !== "normal";
+    ui.rowFlip.hidden = m !== "normal";
+  }
+
+  const VS = `
+attribute vec3 aPos; attribute vec3 aNor; attribute vec3 aCol;
+uniform mat4 uMvp; varying vec3 vNor; varying vec3 vCol; varying float vZ;
+void main(){ vNor = aNor; vCol = aCol; vZ = aPos.z; gl_Position = uMvp * vec4(aPos, 1.0); }`;
+  const FS = `
+precision mediump float;
+varying vec3 vNor; varying vec3 vCol; varying float vZ;
+uniform vec3 uLight; uniform vec3 uEye;
+void main(){
+  vec3 n = normalize(vNor);
+  float key = max(dot(n, uLight), 0.0);
+  float sky = 0.5 + 0.5 * n.z;                       // 半球环境光：朝上的面更亮
+  vec3 h = normalize(uLight + normalize(uEye));
+  float spec = pow(max(dot(n, h), 0.0), 48.0) * 0.18; // 一点哑光树脂的高光
+  vec3 c = vCol * (0.18 + 0.30 * sky + 0.72 * key) + vec3(spec);
+  gl_FragColor = vec4(pow(c, vec3(1.0 / 1.15)), 1.0);
+}`;
+
+  /** 轨道相机：绕浮雕中心转，z 向上。 */
+  const CAM0 = { yaw: -0.45, pitch: 0.78, zoom: 1 };
+  const viewer = {
+    gl: null, prog: null, buf: null, count: 0, ok: null, cam: Object.assign({}, CAM0),
+    zMid: 0, radius: 1.25, raf: 0, 
+  };
+
+  function initViewer() {
+    if (viewer.ok !== null) return viewer.ok;
+    const cv = ui.cv3d;
+    let gl = null;
+    try {
+      gl = cv.getContext("webgl2", { antialias: true }) || cv.getContext("webgl", { antialias: true });
+    } catch (err) { gl = null; }
+    if (!gl) { viewer.ok = false; return false; }
+    // WebGL1 需要扩展才能用 32 位索引；没有就退回山体着色
+    const isGl2 = typeof WebGL2RenderingContext !== "undefined" && gl instanceof WebGL2RenderingContext;
+    if (!isGl2 && !gl.getExtension("OES_element_index_uint")) { viewer.ok = false; return false; }
+    const sh = (type, src) => {
+      const o = gl.createShader(type);
+      gl.shaderSource(o, src); gl.compileShader(o);
+      if (!gl.getShaderParameter(o, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(o) || "shader");
+      return o;
+    };
+    try {
+      const prog = gl.createProgram();
+      gl.attachShader(prog, sh(gl.VERTEX_SHADER, VS));
+      gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, FS));
+      gl.linkProgram(prog);
+      if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog) || "link");
+      viewer.prog = prog;
+    } catch (err) {
+      console.warn("[relief] WebGL 初始化失败，改用山体着色：", err && err.message);
+      viewer.ok = false; return false;
+    }
+    viewer.gl = gl;
+    viewer.buf = { pos: gl.createBuffer(), nor: gl.createBuffer(), col: gl.createBuffer(), idx: gl.createBuffer() };
+    viewer.loc = {
+      aPos: gl.getAttribLocation(viewer.prog, "aPos"),
+      aNor: gl.getAttribLocation(viewer.prog, "aNor"),
+      aCol: gl.getAttribLocation(viewer.prog, "aCol"),
+      uMvp: gl.getUniformLocation(viewer.prog, "uMvp"),
+      uLight: gl.getUniformLocation(viewer.prog, "uLight"),
+      uEye: gl.getUniformLocation(viewer.prog, "uEye"),
+    };
+    cv.addEventListener("webglcontextlost", (e) => { e.preventDefault(); viewer.ok = null; viewer.gl = null; });
+    cv.addEventListener("webglcontextrestored", () => { schedule(); });
+    if (typeof ResizeObserver !== "undefined") new ResizeObserver(drawViewer).observe(cv);
+    viewer.ok = true;
+    return true;
+  }
+
+  /** 高度场 → 网格 → GPU。只在高度图或「起伏/表面」变化时重建。 */
+  function uploadRelief(field, w, h) {
+    const gl = viewer.gl;
+    const mesh = E.reliefMesh(field, w, h, {
+      relief: 0.12 * state.reliefScale,
+      rgba: state.surface === "image" ? state.rgba : null,
+    });
+    const put = (buf, data, target = gl.ARRAY_BUFFER) => {
+      gl.bindBuffer(target, buf); gl.bufferData(target, data, gl.STATIC_DRAW);
+    };
+    put(viewer.buf.pos, mesh.positions);
+    put(viewer.buf.nor, mesh.normals);
+    put(viewer.buf.col, mesh.colors);
+    put(viewer.buf.idx, mesh.indices, gl.ELEMENT_ARRAY_BUFFER);
+    viewer.count = mesh.indices.length;
+    viewer.zMid = (mesh.relief - mesh.base) / 2;
+    viewer.radius = Math.hypot(mesh.sx, mesh.sy) / 2;
+    drawViewer();
+  }
+
+  function mat4Mul(a, b) {
+    const o = new Float32Array(16);
+    for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) {
+      let v = 0;
+      for (let k = 0; k < 4; k++) v += a[k * 4 + r] * b[c * 4 + k];
+      o[c * 4 + r] = v;
+    }
+    return o;
+  }
+  function perspective(fovy, aspect, near, far) {
+    const f = 1 / Math.tan(fovy / 2), nf = 1 / (near - far);
+    return new Float32Array([f / aspect, 0, 0, 0, 0, f, 0, 0, 0, 0, (far + near) * nf, -1, 0, 0, 2 * far * near * nf, 0]);
+  }
+  function lookAt(eye, at, up) {
+    const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+    const nrm = (v) => { const l = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0] / l, v[1] / l, v[2] / l]; };
+    const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+    const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    const z = nrm(sub(eye, at)), x = nrm(cross(up, z)), y = cross(z, x);
+    return new Float32Array([x[0], y[0], z[0], 0, x[1], y[1], z[1], 0, x[2], y[2], z[2], 0,
+      -dot(x, eye), -dot(y, eye), -dot(z, eye), 1]);
+  }
+
+  function drawViewer() {
+    const gl = viewer.gl;
+    if (!gl || ui.cv3d.hidden) return;
+    const cv = ui.cv3d;
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const W = Math.max(1, Math.round(cv.clientWidth * dpr)), H = Math.max(1, Math.round(cv.clientHeight * dpr));
+    if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
+    gl.viewport(0, 0, W, H);
+    gl.clearColor(0.059, 0.063, 0.071, 1);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    if (!viewer.count) return;
+    gl.enable(gl.DEPTH_TEST);
+    gl.disable(gl.CULL_FACE);
+    gl.useProgram(viewer.prog);
+    const c = viewer.cam;
+    const at = [0, 0, viewer.zMid];
+    // 按窗格宽高比自动退远，保证整块板子都在画面里（并排视图下窗格是竖长的）
+    const FOV = 0.62;
+    const half = Math.min(FOV / 2, Math.atan(Math.tan(FOV / 2) * (W / H)));
+    const dist = (viewer.radius * 1.04 / Math.sin(half)) * c.zoom;
+    const eye = [
+      at[0] + dist * Math.cos(c.pitch) * Math.sin(c.yaw),
+      at[1] - dist * Math.cos(c.pitch) * Math.cos(c.yaw),
+      at[2] + dist * Math.sin(c.pitch),
+    ];
+    const mvp = mat4Mul(perspective(FOV, W / H, 0.05, 80), lookAt(eye, at, [0, 0, 1]));
+    gl.uniformMatrix4fv(viewer.loc.uMvp, false, mvp);
+    // 光从左上方斜照（和山体着色同一方向），起伏的阴影面最好认
+    const Ld = [-0.55, 0.6, 0.58], Ll = Math.hypot(Ld[0], Ld[1], Ld[2]);
+    gl.uniform3f(viewer.loc.uLight, Ld[0] / Ll, Ld[1] / Ll, Ld[2] / Ll);
+    gl.uniform3f(viewer.loc.uEye, eye[0] - at[0], eye[1] - at[1], eye[2] - at[2]);
+    const bind = (buf, loc) => {
+      if (loc < 0) return;
+      gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+      gl.enableVertexAttribArray(loc);
+      gl.vertexAttribPointer(loc, 3, gl.FLOAT, false, 0, 0);
+    };
+    bind(viewer.buf.pos, viewer.loc.aPos);
+    bind(viewer.buf.nor, viewer.loc.aNor);
+    bind(viewer.buf.col, viewer.loc.aCol);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, viewer.buf.idx);
+    gl.drawElements(gl.TRIANGLES, viewer.count, gl.UNSIGNED_INT, 0);
+  }
+
+  function redrawSoon() {
+    if (viewer.raf) return;
+    viewer.raf = requestAnimationFrame(() => { viewer.raf = 0; drawViewer(); });
+  }
+
+  // 拖动旋转、滚轮缩放、双击复位
+  ui.cv3d.addEventListener("pointerdown", (ev) => {
+    ev.preventDefault();
+    ui.cv3d.setPointerCapture(ev.pointerId);
+    ui.cv3d.classList.add("drag");
+    const sx = ev.clientX, sy = ev.clientY, y0 = viewer.cam.yaw, p0 = viewer.cam.pitch;
+    const move = (e) => {
+      viewer.cam.yaw = y0 + (e.clientX - sx) * 0.008;
+      viewer.cam.pitch = Math.max(0.12, Math.min(1.53, p0 + (e.clientY - sy) * 0.006));
+      redrawSoon();
+    };
+    const up = () => {
+      ui.cv3d.classList.remove("drag");
+      ui.cv3d.removeEventListener("pointermove", move);
+      ui.cv3d.removeEventListener("pointerup", up);
+      ui.cv3d.removeEventListener("pointercancel", up);
+    };
+    ui.cv3d.addEventListener("pointermove", move);
+    ui.cv3d.addEventListener("pointerup", up);
+    ui.cv3d.addEventListener("pointercancel", up);
+  });
+  ui.cv3d.addEventListener("wheel", (ev) => {
+    ev.preventDefault();
+    viewer.cam.zoom = Math.max(0.35, Math.min(2.5, viewer.cam.zoom * Math.exp(ev.deltaY * 0.0012)));
+    redrawSoon();
+  }, { passive: false });
+  ui.cv3d.addEventListener("dblclick", () => {
+    viewer.cam = Object.assign({}, CAM0);
+    redrawSoon();
+  });
+
+  /** 预览区：按样式决定显示 2D 画布还是 3D 画布，以及标签/图例文字。 */
+  function showPreviewMode(mode) {
+    const is3d = mode === "relief";
+    ui.cv3d.hidden = !is3d;
+    cvDst.hidden = is3d;
+    ui.legend3d.hidden = false;
+    ui.legend3d.children[0].hidden = !is3d;
+    ui.legend3d.children[1].hidden = mode !== "gray";
+    $("tagDst").textContent = {
+      relief: "立体预览 · 越白越高",
+      shaded: "山体着色 · 色带 = 高度",
+      gray: "高度图 · 白 = 高 黑 = 低",
+      normal: "法线图",
+    }[mode] || "高度图";
+  }
+
   // ---------------- 渲染 ----------------
   let timer = 0;
   function schedule() {
@@ -1797,18 +2154,25 @@ async function connectWorkshop(options) {
     }
     state.field = field;
 
-    // 预览
-    let rgba;
-    if (state.preview === "normal") {
-      rgba = E.normalRGBA(field, w, h, state.normStrength, state.flipGreen);
-    } else if (state.preview === "shaded") {
-      rgba = E.shadeRGBA(field, w, h);
+    // 预览：默认立体浮雕；浏览器不支持 WebGL 时退回山体着色
+    let mode = state.preview;
+    if (mode === "relief" && !initViewer()) mode = "shaded";
+    showPreviewMode(mode);
+    if (mode === "relief") {
+      uploadRelief(field, w, h);
     } else {
-      rgba = E.fieldToRGBA(field);
+      let rgba;
+      if (mode === "normal") {
+        rgba = E.normalRGBA(field, w, h, state.normStrength, state.flipGreen);
+      } else if (mode === "shaded") {
+        rgba = E.shadeRGBA(field, w, h);
+      } else {
+        rgba = E.fieldToRGBA(field);
+      }
+      const ctx = cvDst.getContext("2d");
+      cvDst.width = w; cvDst.height = h;
+      ctx.putImageData(new ImageData(rgba, w, h), 0, 0);
     }
-    const ctx = cvDst.getContext("2d");
-    cvDst.width = w; cvDst.height = h;
-    ctx.putImageData(new ImageData(rgba, w, h), 0, 0);
 
     const st = E.stats(field);
     ui.statRange.textContent =
@@ -1832,11 +2196,9 @@ async function connectWorkshop(options) {
     state.height = h;
     state.dirty = true;
     cvSrc.hidden = false;
-    cvDst.hidden = false;
     $("emptySrc").hidden = true;
     $("emptyDst").hidden = true;
     $("tagSrc").textContent = "原图 · " + w + "×" + h;
-    $("tagDst").textContent = "高度图 · 白 = 高 黑 = 低";
     ui.imgInfo.textContent = `${w}×${h} · ${(w * h / 1e6).toFixed(2)} MP`;
     // 换图 = 换一次交接：旧的高度图与「待确认」一起作废，projectId 也换新
     state.field = null;
